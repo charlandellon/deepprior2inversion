@@ -359,6 +359,7 @@ def main():
         space_order = 8
         nrec = model_vp['nrcv']
         print(f'nrec: {nrec}')
+        plot_samples = False
         group = slice(0, 1000, 1) #slice(45000, 50000)
         corte = 268 #31 #32 159 268 351
         wells_pos = (np.round(corte*spacing[0] + spacing[0]) * 1e-3,) #(1.0, 5.0, 8.400, 11.0)

@@ -319,6 +319,8 @@ class SeismicSetup(object):
         self.np_kernel = 120
 
         self.dm = torch.from_numpy(1. / vp**2).unsqueeze(0).unsqueeze(0)
+        self.dm_min = torch.from_numpy(1. / (vp + self.args.dv)**2).min().item()
+        self.dm_max = self.dm.max().item()
         nbl = 50
         space_order = 8
         self.model = Model(space_order=space_order,
@@ -399,6 +401,8 @@ class SeismicSetup(object):
         self.taper_len = 100 # filtrar a região de onda direta
 
         self.dm = torch.from_numpy(1. / vp**2).unsqueeze(0).unsqueeze(0)
+        self.dm_min = torch.from_numpy(1. / (vp + self.args.dv)**2).min().item()
+        self.dm_max = self.dm.max().item()
 
         space_order = 8
         self.model = Model(space_order=space_order,

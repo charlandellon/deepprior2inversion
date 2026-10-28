@@ -18,6 +18,7 @@ deepprior2inversion/
 ├── data/                  # dados e resultados (não versionado)
 ├── environment.yml
 ├── setup.py
+├── run.sh                 # pipeline ponta a ponta
 └── README.md
 ```
 
@@ -80,6 +81,29 @@ bash scripts/launchers/marmousi/run_plot_seismic_marmousi.sh
 bash scripts/launchers/4layers/run_4layers.sh
 bash scripts/launchers/4layers/run_plot_seismic_4layers.sh
 ```
+
+## Pipeline completo (BP ou Marmousi)
+
+O script `run.sh` executa o fluxo ponta a ponta:
+
+1. baixa e gera o modelo de velocidade;
+2. gera os dados sísmicos;
+3. executa a inversão;
+4. calcula os índices estatísticos.
+
+```bash
+bash run.sh bp
+bash run.sh marmousi
+```
+
+Exemplo de execução rápida:
+
+```bash
+MAX_ITR=100 RUN_STATS=0 bash run.sh bp
+```
+
+Variáveis úteis: `MAX_ITR`, `NSRC`, `NREC`, `SIGMA`, `FREQ`, `CUDA`,
+`RUN_ALL`, `GENERATE_MODEL`, `RUN_STATS`, `PYTHON_BIN`.
 
 ## Opções úteis
 

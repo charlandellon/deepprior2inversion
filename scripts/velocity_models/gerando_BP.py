@@ -21,7 +21,7 @@ if not os.path.exists(out_dir):
 BP_model = load_BP_model(in_dir)
 # print(f"nx = {nx}, ny = {ny}, nt = {nt}")
 # print(f"dx = {dx:.2f} m, dy = {dy:.2f} m, dt = {dt:.2e} s")
-print(f'BP_model max(vp): {np.max(BP_model['vp'])}')
+print(f"BP_model max(vp): {np.max(BP_model['vp'])}")
 x_range = [0, 25000] #m
 y_range = [0, 9000] #m
 
@@ -51,7 +51,7 @@ nt = len(t)
 src_rcv_depth = 0 #n_pml + 5
 mask_extra_detph = 0 #
 
-print(f'model max(vp): {np.max(model['vp'])}')
+print(f"model max(vp): {np.max(model['vp'])}")
 
 print(f"nx = {nx}, ny = {ny}, nt = {nt}, tmax = {t[-1]}")
 print(f"dx = {dx:.2f} m, dy = {dy:.2f} m, dt = {dt:.2e} s")
