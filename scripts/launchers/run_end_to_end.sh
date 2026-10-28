@@ -14,9 +14,9 @@ case "$MODEL" in
     NREC="${NREC:-234}"
     NSIMSRC="${NSIMSRC:-$NSRC}"
     SIGMA="${SIGMA:-1.5}"
-    SIMULT="${SIMULT:-0}"
+    SIMULT="${SIMULT:-1}"
     BG_LINEAR="${BG_LINEAR:-1}"
-    COARSE_OUTPUT_SCALE="${COARSE_OUTPUT_SCALE:-4}"
+    COARSE_OUTPUT_SCALE="${COARSE_OUTPUT_SCALE:-1}"
     FILE_FIGS="${FILE_FIGS:-BP_seed_42}"
     SIM_FILE="${SIM_FILE:-simult_src_117_nrec_234_BP_3Hz.h5}"
     SEQ_FILE="${SEQ_FILE:-observed_seq_src_117_nrec_234_BP_3Hz.h5}"
@@ -58,7 +58,7 @@ SEED="${SEED:-42}"
 SCALE="${SCALE:-10}"
 UPSAMPLE_SCALE="${UPSAMPLE_SCALE:-1}"
 RETRAIN="${RETRAIN:-1}"
-RUN_ALL="${RUN_ALL:-1}"
+RUN_ALL="${RUN_ALL:-0}"
 RUN_STATS="${RUN_STATS:-1}"
 GENERATE_MODEL="${GENERATE_MODEL:-1}"
 
@@ -71,14 +71,41 @@ if ! "$PYTHON_BIN" -c "import dp4inversion" >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "$GENERATE_MODEL" == "1" ]]; then
+generate_model() {
   if ! command -v wget >/dev/null 2>&1; then
     echo "wget é necessário para baixar os modelos de velocidade." >&2
     exit 1
   fi
   echo "[1/3] Baixando e gerando o modelo de velocidade: $MODEL"
   "$PYTHON_BIN" "$MODEL_SCRIPT"
-fi
+}
+
+MODEL_FILES_MISSING=0
+for file in "${MODEL_FILES[@]}"; do
+  if [[ ! -f "$file" ]]; then
+    MODEL_FILES_MISSING=1
+  fi
+done
+
+case "$GENERATE_MODEL" in
+  0)
+    echo "[1/3] Geração de modelo desativada (GENERATE_MODEL=0)."
+    ;;
+  1)
+    if [[ "$MODEL_FILES_MISSING" == "1" ]]; then
+      generate_model
+    else
+      echo "[1/3] Modelos de velocidade já existem; pulando geração."
+    fi
+    ;;
+  force|2)
+    generate_model
+    ;;
+  *)
+    echo "GENERATE_MODEL inválido: use 0, 1 ou force." >&2
+    exit 1
+    ;;
+esac
 
 for file in "${MODEL_FILES[@]}"; do
   if [[ ! -f "$file" ]]; then
@@ -116,7 +143,11 @@ COMMON_ARGS=(
   --coarse_output_scale "$COARSE_OUTPUT_SCALE"
 )
 
-echo "[2/3] Gerando dados sísmicos e executando a inversão: $MODEL"
+if [[ "$RUN_ALL" == "1" ]]; then
+  echo "[2/3] Regenerando dados sísmicos e executando a inversão: $MODEL"
+else
+  echo "[2/3] Reutilizando dados sísmicos existentes (quando disponíveis) e executando a inversão: $MODEL"
+fi
 "$PYTHON_BIN" scripts/inversion/run_imaging.py "${COMMON_ARGS[@]}"
 
 if [[ "$RUN_STATS" == "1" ]]; then

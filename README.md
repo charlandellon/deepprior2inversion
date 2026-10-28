@@ -18,6 +18,7 @@ deepprior2inversion/
 ├── data/                  # dados e resultados (não versionado)
 ├── environment.yml
 ├── setup.py
+├── setup_env.sh           # criação do ambiente Conda
 ├── run.sh                 # pipeline ponta a ponta
 └── README.md
 ```
@@ -30,6 +31,14 @@ cd deepprior2inversion
 conda env create -f environment.yml
 conda activate deepprior2inversion
 pip install -e .
+```
+
+Ou use o script de criação automática:
+
+```bash
+bash setup_env.sh
+bash setup_env.sh --update
+bash setup_env.sh --recreate
 ```
 
 ## Dados
@@ -104,6 +113,11 @@ MAX_ITR=100 RUN_STATS=0 bash run.sh bp
 
 Variáveis úteis: `MAX_ITR`, `NSRC`, `NREC`, `SIGMA`, `FREQ`, `CUDA`,
 `RUN_ALL`, `GENERATE_MODEL`, `RUN_STATS`, `PYTHON_BIN`.
+
+Por padrão, arquivos já existentes são reaproveitados: os modelos de velocidade
+só são gerados se estiverem ausentes (`GENERATE_MODEL=1`) e os dados sísmicos só
+são simulados se faltarem (`RUN_ALL=0`). Para forçar a regeneração, use
+`GENERATE_MODEL=force` e/ou `RUN_ALL=1`.
 
 ## Opções úteis
 

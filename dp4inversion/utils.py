@@ -14,6 +14,29 @@ import obspy
 
 from .project_path import checkpointsdir, datadir
 
+try:
+    from numpy._core.multiarray import _reconstruct as _np_reconstruct
+    from numpy._core.multiarray import scalar as _np_scalar
+except ImportError:  # NumPy < 2
+    from numpy.core.multiarray import _reconstruct as _np_reconstruct
+    from numpy.core.multiarray import scalar as _np_scalar
+
+_NUMPY_SAFE_GLOBALS = (
+    np.ndarray,
+    np.dtype,
+    type(np.dtype(np.float32)),
+    type(np.dtype(np.float64)),
+    _np_reconstruct,
+    _np_scalar,
+)
+
+
+def load_torch_file(path, **kwargs):
+    """Load a trusted PyTorch file with NumPy objects explicitly allowed."""
+    with torch.serialization.safe_globals(_NUMPY_SAFE_GLOBALS):
+        return torch.load(path, weights_only=True, **kwargs)
+
+
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
@@ -456,7 +479,7 @@ def get_velocity_(vel_path: str) -> Tuple[
     # Path to velocity model.
     vel_file = os.path.join(datadir("velocity_model"), vel_path)
 
-    model = torch.load(vel_file)
+    model = load_torch_file(vel_file)
 
     spacing = (model['dx'].astype(np.float32), model['dy'].astype(np.float32))
     shape = (model['nx'], model['ny'])
@@ -838,6 +861,6 @@ def load_checkpoint(args: argparse.Namespace):
     """
 
     # Load intermediate network weights and training logs
-    attrs = torch.load(os.path.join(checkpointsdir(args.experiment), 'checkpoint.pth'))
+    attrs = load_torch_file(os.path.join(checkpointsdir(args.experiment), 'checkpoint.pth'))
 
     return attrs

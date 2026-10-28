@@ -2,10 +2,10 @@ import os
 
 import argparse
 import numpy as np
-import torch
 from tqdm import tqdm
 
 from dp4inversion.project_path import checkpointsdir, datadir, imagesdir
+from dp4inversion.utils import load_torch_file
 from examples.seismic import Model
 import h5py
 from devito.builtins import initialize_function
@@ -226,7 +226,7 @@ def main():
                         f'wd-{args.wd}_gamma-{args.gamma}_nsrc-{args.nsrc}_nrec-{args.nrec}']))
 
 
-        attrs = torch.load(os.path.join(checkpointsdir(args.experiment), 'checkpoint.pth'))
+        attrs = load_torch_file(os.path.join(checkpointsdir(args.experiment), 'checkpoint.pth'))
 
         group = slice(0, 10000)
 

@@ -2,10 +2,10 @@ import os
 
 import argparse
 import numpy as np
-import torch
 from tqdm import tqdm
 
 from dp4inversion.project_path import checkpointsdir, datadir, imagesdir
+from dp4inversion.utils import load_torch_file
 from examples.seismic import Model
 import h5py
 from devito.builtins import initialize_function
@@ -319,7 +319,7 @@ def main():
 
     print(f'samples shape: {samples.shape}')
 
-    attrs = torch.load(os.path.join(checkpointsdir(args.experiment), 'checkpoint.pth'))
+    attrs = load_torch_file(os.path.join(checkpointsdir(args.experiment), 'checkpoint.pth'))
 
 
     if args.vel_model.lower() == '4layers':
@@ -351,7 +351,7 @@ def main():
         f0 = 5
         vel_path = datadir("velocity_model")
         path = os.path.join(vel_path, f'marmousi2-model-true-large_freq_{f0}.pth')
-        model_vp = torch.load(path)
+        model_vp = load_torch_file(path)
         spacing = (model_vp['dx'], model_vp['dy'])
         shape = (model_vp['nx'], model_vp['ny'])
         origin = (0, 0)
@@ -370,7 +370,7 @@ def main():
         f0 = 3
         vel_path = datadir("velocity_model")
         path = os.path.join(vel_path, f'BP_model_freq_{f0}_v1.pth')
-        model_vp = torch.load(path)
+        model_vp = load_torch_file(path)
         spacing = (model_vp['dx'], model_vp['dy'])
         shape = (model_vp['nx'], model_vp['ny'])
         origin = (0, 0)

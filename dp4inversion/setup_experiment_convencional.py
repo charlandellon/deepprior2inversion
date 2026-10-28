@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from .devito_layer import ForwardBorn, ForwardModeling, ForwardModelingConvencional
 from .project_path import datadir, imagesdir
-from .utils import get_velocity, get_velocity_marmousi, get_velocity_, plot_velocity
+from .utils import get_velocity, get_velocity_marmousi, get_velocity_, load_torch_file, plot_velocity
 import logging
 import argparse
 
@@ -182,7 +182,7 @@ class SeismicSetup(object):
         f0 = 3
         vel_path = datadir("velocity_model")
         path = os.path.join(vel_path, f'BP_model_freq_{f0}_v1.pth')
-        model_vp = torch.load(path)
+        model_vp = load_torch_file(path)
         vp = model_vp['vp']
         self.spacing = (model_vp['dx'], model_vp['dy'])
         shape = (model_vp['nx'], model_vp['ny'])
@@ -196,7 +196,7 @@ class SeismicSetup(object):
         vp_mask = np.where(vp <= 1.5, 0, vp_mask)
 
         path = os.path.join(vel_path, f'BP-smooth-linear_freq_{f0}_v1.pth')
-        model_vp_smooth = torch.load(path)
+        model_vp_smooth = load_torch_file(path)
         vp_smooth = model_vp_smooth['vp']
         vp_smooth = np.mean(vp_smooth, axis=0, keepdims=True).repeat(vp.shape[0], axis=0)
         # vp_smooth = np.mean(vp[::10, :], axis=0, keepdims=True).repeat(vp.shape[0], axis=0)
@@ -262,7 +262,7 @@ class SeismicSetup(object):
         f0 = 5
         vel_path = datadir("velocity_model")
         path = os.path.join(vel_path, f'marmousi2-model-true-large_freq_{f0}.pth')
-        model_vp = torch.load(path)
+        model_vp = load_torch_file(path)
         vp = model_vp['vp']
         self.spacing = (model_vp['dx'], model_vp['dy'])
         shape = (model_vp['nx'], model_vp['ny'])
@@ -276,7 +276,7 @@ class SeismicSetup(object):
         # vp_mask = np.where(vp == 1.5, 0, vp_mask)
 
         path = os.path.join(vel_path, f'marmousi2-model-smooth-linear_freq_{f0}.pth')
-        model_vp_smooth = torch.load(path)
+        model_vp_smooth = load_torch_file(path)
         vp_smooth = model_vp_smooth['vp']
 
         if self.args.bg_linear == 1:
