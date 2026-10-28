@@ -1,0 +1,25 @@
+name: deepprior2inversion
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+  - nvidia
+dependencies:
+  - nvidia::cudatoolkit=11.7
+  - python==3.11
+  - pytorch::pytorch
+  - pip
+  - pip:
+    - devito
+    - h5py
+    - matplotlib
+    - numpy
+    - tqdm
+    - pandas
+    - seaborn
+    - GitPython
+    - scipy
+    - obspy
+    - opencv-python
+    - imageio
+    - pytest

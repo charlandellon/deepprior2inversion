@@ -1,0 +1,230 @@
+"""Script to run imaging and uncertainty quantification with deep priors.
+
+Typical usage example:
+
+python run_imaging.py --phase sample --cuda 1
+"""
+
+import argparse
+from deep_prior_imaging import DeepPriorImaging
+import os
+import matplotlib
+matplotlib.use('Agg')
+
+parser = argparse.ArgumentParser(description='')
+parser.add_argument('--max_itr',
+                    dest='max_itr',
+                    type=int,
+                    default=10001,
+                    help='maximum number of updates to weights')
+parser.add_argument('--sigma',
+                    dest='sigma',
+                    type=float,
+                    default=0.25,
+                    help='noise standard variation')
+parser.add_argument('--lr',
+                    dest='lr',
+                    type=float,
+                    default=0.01,
+                    help='initial learning rate for pSGLD')
+parser.add_argument('--lr_final',
+                    dest='lr_final',
+                    type=float,
+                    default=0.005,
+                    help='final learning rate for pSGLD')
+parser.add_argument('--wd',
+                    dest='wd',
+                    type=float,
+                    default=30.0,
+                    help='weight decay coefficient')
+parser.add_argument('--gamma',
+                    dest='gamma',
+                    type=float,
+                    default=-0.3333,
+                    help='learning rate decay rate')
+parser.add_argument('--experiment',
+                    dest='experiment',
+                    default='deep-bayesian-inference',
+                    help='experiment name')
+parser.add_argument('--cuda',
+                    dest='cuda',
+                    type=int,
+                    default=0,
+                    help='set to 1 for running on GPU, 0 for CPU')
+
+parser.add_argument('--seed',
+                    dest='seed',
+                    type=int,
+                    default=42,
+                    help='set seed for aleatory sample latent space')
+
+parser.add_argument('--phase',
+                    dest='phase',
+                    default='sample',
+                    help='sample or inference')
+
+parser.add_argument('--file_simut_data',
+                    dest='file_simult_data',
+                    default='sim_src_data_marmousi.h5',
+                    help='File name for obseved data with multi-source')
+
+parser.add_argument('--file_seq_data',
+                    dest='file_seq_data',
+                    default='observed_data_marmousi.h5',
+                    help='File name for obseved data with sequential-source')
+
+parser.add_argument('--file_figs',
+                    dest='file_result_figs',
+                    default='4Layers',
+                    help='File name for obseved data with sequential-source')
+
+parser.add_argument('--run_all',
+                    dest='run_all',
+                    type=int,
+                    default=0,
+                    help='set to 1 for run all process of modelling seismic dataset')
+
+parser.add_argument('--nsrc',
+                    dest='nsrc',
+                    type=int,
+                    default=50,
+                    help='set the sorce number for modelling')
+
+parser.add_argument('--nrec',
+                    dest='nrec',
+                    type=int,
+                    default=100,
+                    help='set the receptor number for modelling')
+
+parser.add_argument('--vel_model',
+                    dest='vel_model',
+                    default='4layers',
+                    help='Velocities models available (4layers, marmousi or bp)')
+
+parser.add_argument('--retrain',
+                    dest='retrain',
+                    type=int,
+                    default=0,
+                    help='Train model of initial.')
+
+parser.add_argument('--simult',
+                    dest='sim_source',
+                    type=int,
+                    default=1,
+                    help='Consirering simultaneous source')
+
+parser.add_argument('--upsample_scale',
+                    dest='upsample_scale',
+                    type=int,
+                    default=1,
+                    help='Latente variable scale')
+
+
+parser.add_argument('--coarse_output_scale',
+                    dest='coarse_output_scale',
+                    type=int,
+                    default=1,
+                    help='Coarse output scale for DeepPrior. Use 1 to keep the conventional full-resolution output.')
+
+parser.add_argument('--scale',
+                    dest='scale',
+                    type=float,
+                    default=1.0,
+                    help='Scale of noise in the gradients parameters of the CNN')
+
+parser.add_argument('--ch_encoding',
+                    dest='ch_encoding',
+                    type=int,
+                    default=[16, 32, 64],
+                    nargs='+',
+                    help='Define the encoding layers')
+
+parser.add_argument('--ch_decoding',
+                    dest='ch_decoding',
+                    type=int,
+                    default=[16, 32, 64],
+                    nargs='+',
+                    help='Define the decoding layers')
+
+parser.add_argument('--ch_skip',
+                    dest='ch_skip',
+                    type=int,
+                    default=[0, 0, 64],
+                    nargs='+',
+                    help='Define the skip connection layers')
+
+parser.add_argument('--time_seismic',
+                    dest='time_seismic',
+                    type=float,
+                    default=1000,
+                    help='Define seismic modelling time')
+
+parser.add_argument('--freq',
+                    dest='freq',
+                    type=float,
+                    default=5.0,
+                    help='Define the frequence of the modelling')
+
+parser.add_argument('--nsimsrc',
+                    dest='nsimsrc',
+                    type=int,
+                    default=1,
+                    help='Simultaneus sources to modelling.')
+
+
+parser.add_argument('--bg_linear',
+                    dest='bg_linear',
+                    type=int,
+                    default=1,
+                    help='Background linear to modelling.')
+
+parser.add_argument('--dv',
+                    dest='dv',
+                    type=float,
+                    default=0.0,
+                    help='small pad in maximum velocity')
+
+
+
+
+
+
+args = parser.parse_args()
+
+
+def main():
+    """Calls DeepPriorImaging with the input command line arguments.
+    """
+
+    # Ensure that noise standard deviation is greater than zero.
+    if args.sigma <= 0.0:
+        ValueError(f'`sigma` must be greater than zero but is {args.sigma}')
+
+    # Ensure that initial learning rate is not less than final learning rate.
+    if args.lr < args.lr_final:
+        ValueError(f'`lr` ({args.lr}) must not be smaller than '
+                   f'`lr_final ({args.lr_final}).')
+
+    args.file_simult_data = f'freq_{args.freq}Hz_{args.file_simult_data}'
+    args.file_seq_data = f'freq_{args.freq}Hz_{args.file_seq_data}'
+
+    args.file_simult_data = f'{args.file_simult_data[:-3]}_sigma_{args.sigma}_{args.file_simult_data[-3:]}'
+
+    args.file_seq_data = f'{args.file_seq_data[:-3]}_sigma_{args.sigma}_{args.file_seq_data[-3:]}'
+
+    args.file_result_figs = f'ch_encoding_{args.ch_encoding}_ch_decoding_{args.ch_decoding}_ch_skip_{args.ch_skip}_Latente_scale_{args.upsample_scale}-scale_{args.scale}_{args.file_result_figs}_max_itr-{args.max_itr}_sigma' \
+                            f'-{args.sigma}_lr-{args.lr}_lr_final-{args.lr_final}_' \
+                            f'wd-{args.wd}_gamma-{args.gamma}_seed-{args.seed}_nsrc-{args.nsrc}_nrec-{args.nrec}_freq-{args.freq}Hz'
+
+    # Experiment name according to input arguments.
+    args.experiment = (os.sep.join([args.file_result_figs, f'{args.experiment}_max_itr-{args.max_itr}_sigma'
+                       f'-{args.sigma}_lr-{args.lr}_lr_final-{args.lr_final}_'
+                       f'wd-{args.wd}_gamma-{args.gamma}_nsrc-{args.nsrc}_nrec-{args.nrec}']))
+
+    if args.phase == 'sample':
+        imaging_instance = DeepPriorImaging(args)
+        imaging_instance.sample(args)
+
+
+if __name__ == '__main__':
+    main()
