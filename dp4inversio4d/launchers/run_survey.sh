@@ -21,6 +21,8 @@ RETRAIN=0                     # never delete existing checkpoints/samples on rel
 BG_LINEAR=1
 TARGET_SNR_DB=6.0
 SHORT_OUTPUT=1                # compact 4d/<experiment> paths for Windows MAX_PATH
+MAX_RETRIES=5                 # automatic resumes after transient filesystem errors
+RETRY_WAIT_S=30
 
 # Inversion
 MAX_ITR=25000
@@ -69,7 +71,8 @@ if [[ ! -f "$SIGMA_JSON" ]]; then
 fi
 SIGMA="$("$PYTHON" -c "import json;print(repr(json.load(open('$SIGMA_JSON'))['sigma']))")"
 
-"$PYTHON" scripts/inversion/run_imaging.py --phase sample --cuda "$CUDA" \
+attempt=0
+until "$PYTHON" scripts/inversion/run_imaging.py --phase sample --cuda "$CUDA" \
   --experiment "${EXPERIMENT_PREFIX}_${SURVEY}" \
   --file_figs "${FILE_FIGS_PREFIX}_${SURVEY}" \
   --file_simut_data "${DATA_PREFIX}_${SURVEY}_simult.h5" \
@@ -83,4 +86,13 @@ SIGMA="$("$PYTHON" -c "import json;print(repr(json.load(open('$SIGMA_JSON'))['si
   --run_all "$RUN_ALL" --retrain "$RETRAIN" --bg_linear "$BG_LINEAR" \
   "${SHORT_FLAG[@]}" \
   --upsample_scale "$UPSCALE" --coarse_output_scale "$COARSE_OUTPUT_SCALE" \
-  --ch_encoding $CH_ENCODING --ch_decoding $CH_DECODING --ch_skip $CH_SKIP
+  --ch_encoding $CH_ENCODING --ch_decoding $CH_DECODING --ch_skip $CH_SKIP; do
+  status=$?
+  attempt=$((attempt+1))
+  if (( attempt >= MAX_RETRIES )); then
+    echo "run failed after $attempt attempts (status $status)" >&2
+    exit "$status"
+  fi
+  echo "run failed (status $status); resuming from checkpoint in ${RETRY_WAIT_S}s" >&2
+  sleep "$RETRY_WAIT_S"
+done
