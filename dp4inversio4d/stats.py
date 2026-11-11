@@ -207,17 +207,21 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
         posterior[survey] = load_posterior(matches[0], burn_in, stride)
         if posterior[survey].shape != (posterior[survey].shape[0],)+truth['v_true'].shape[1:]:
             raise ValueError(f'{survey}: posterior shape {posterior[survey].shape} differs from truth')
-    counts = {values.shape[0] for values in posterior.values()}
-    if len(counts) != 1:
-        raise ValueError('surveys have different posterior sample counts; check burn-in/stride/max_itr')
+    available = {survey: values.shape[0] for survey, values in posterior.items()}
+    common = min(available.values())
+    if common < 1:
+        raise ValueError('no common posterior samples after burn-in/stride')
+    for survey in posterior:
+        posterior[survey] = posterior[survey][:common]
 
     masks = {'R1': truth['mask_R1'], 'R2': truth['mask_R2']}
     control = ~(truth['mask_R1'] | truth['mask_R2'])
     report = {'burn_in': int(burn_in), 'stride': int(stride),
-              'samples_used': int(next(iter(counts))),
+              'samples_used': int(common), 'samples_available': available,
               'samples_file': {key: str(value) for key, value in paths.items()},
               'surveys': {}, 'regions': {}, 'notes': []}
     rng = np.random.default_rng(20261111)
+    report['notes'].append('chains truncated to the shortest available one for a common comparison')
     report['notes'].append('baseline and monitors are independent legacy chains; '
                            'differences use Monte Carlo independent pairing, not sample-index pairing')
     report['notes'].append('saturation is conditional on the configured Wood-Gassmann petrophysics')
