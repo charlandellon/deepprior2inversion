@@ -6,6 +6,7 @@ colour bars and 300 dpi. Temporal comparisons always share colour limits.
 """
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 
@@ -19,9 +20,11 @@ def _extent_km(grid):
     return [x[0]/1000, x[-1]/1000, z[-1]/1000, z[0]/1000]
 
 
-def _image(ax, field, extent, cmap, limits, label, title='', seismic=False):
+def _image(ax, field, extent, cmap, limits, label, title='', seismic=False,
+           label_size=10, tick_size=10, nbins=5, aspect=None, colorbar_size='3%'):
     image = ax.imshow(field, animated=True, cmap=cmap, vmin=limits[0], vmax=limits[1],
-                      extent=extent, aspect='auto' if seismic else 'equal')
+                      extent=extent,
+                      aspect='auto' if seismic else ('equal' if aspect is None else aspect))
     ax.set_xlabel('Length (km)')
     ax.set_ylabel('Time (s)' if seismic else 'Depth (km)')
     ax.set_xlim(extent[0], extent[1])
@@ -29,9 +32,11 @@ def _image(ax, field, extent, cmap, limits, label, title='', seismic=False):
     if title:
         ax.set_title(title, fontsize='medium')
     divider = make_axes_locatable(ax)
-    cax = divider.append_axes('right', size='3%', pad=0.05)
+    cax = divider.append_axes('right', size=colorbar_size, pad=0.05)
     colorbar = ax.figure.colorbar(image, cax=cax)
-    colorbar.set_label(label)
+    colorbar.set_label(label, fontsize=label_size)
+    colorbar.ax.tick_params(labelsize=tick_size)
+    colorbar.ax.yaxis.set_major_locator(MaxNLocator(nbins=nbins))
     return image
 
 

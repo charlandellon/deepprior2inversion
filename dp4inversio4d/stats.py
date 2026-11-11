@@ -131,12 +131,28 @@ def _saturation_difference(values, reference, rng, draws=2000):
                 pairing='monte_carlo_independent_chains', draws=int(draws))
 
 
+def _robust_symmetric_limit(fields, percentile):
+    values = np.concatenate([np.abs(field[np.isfinite(field)]).ravel() for field in fields])
+    if values.size == 0:
+        return 1e-12
+    return max(float(np.percentile(values, percentile)), 1e-12)
+
+
+def _robust_upper_limit(fields, percentile):
+    values = np.concatenate([field[np.isfinite(field)].ravel() for field in fields])
+    if values.size == 0:
+        return 1.0
+    return max(float(np.percentile(values, percentile)), 1e-12)
+
+
 def _plot_fields(directory, grid, fields, titles, filename, cmap, limits, label):
     extent = _extent_km(grid)
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    # Vertical stacking fills the figure and gives each colour bar enough height.
+    fig, axes = plt.subplots(3, 1, figsize=(16, 14))
     for axis, field, title in zip(axes, fields, titles):
-        _image(axis, field, extent, cmap, limits, label, title)
-    fig.tight_layout()
+        _image(axis, field, extent, cmap, limits, label, title,
+               label_size=22, tick_size=18, nbins=5, colorbar_size='6%')
+    fig.subplots_adjust(left=0.06, right=0.86, top=0.97, bottom=0.05, hspace=0.28)
     _save(fig, directory/filename)
 
 
@@ -151,21 +167,29 @@ def _reservoir_crop(truth, name):
 
 
 def _plot_zoom(directory, truth, row_specs, columns, fields, filename, cmap, limits, label):
-    """Zoomed reservoir panels with physical aspect and shared colour limits."""
+    """Zoomed reservoir panels with stretched aspect for legible colour bars.
+
+    limits may be a single (vmin, vmax) or one tuple per row (per reservoir).
+    """
+    per_row = isinstance(limits, list)
     fig, axes = plt.subplots(len(row_specs), len(columns),
                              figsize=(5.8*len(columns), 4.4*len(row_specs)), squeeze=False)
     for row_index, (reservoir, row_label) in enumerate(row_specs):
         crop, extent = _reservoir_crop(truth, reservoir)
+        row_limits = limits[row_index] if per_row else limits
         for column_index, title in enumerate(columns):
             _image(axes[row_index, column_index], fields[row_index][column_index][crop],
-                   extent, cmap, limits, label, f'{row_label} — {title}')
+                   extent, cmap, row_limits, label, f'{row_label} — {title}',
+                   label_size=16, tick_size=14, nbins=4, aspect='auto',
+                   colorbar_size='6%')
     fig.tight_layout()
     _save(fig, directory/filename)
 
 
 def _plot_saturation(directory, truth, fields, titles, filename, label, limits=(0, 1)):
     x, z = truth['grid'].axes
-    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
+    ncols = len(titles)
+    fig, axes = plt.subplots(2, ncols, figsize=(6*ncols, 9), squeeze=False)
     for row, name in enumerate(('R1', 'R2')):
         mask = truth['mask_'+name]
         rows, columns = np.where(mask)
@@ -174,13 +198,16 @@ def _plot_saturation(directory, truth, fields, titles, filename, label, limits=(
         extent = [x[ix[0]]/1000, x[ix[-1]]/1000, z[iz[-1]]/1000, z[iz[0]]/1000]
         for column, (field, title) in enumerate(zip(fields[name], titles)):
             _image(axes[row, column], field[np.ix_(iz, ix)], extent, 'jet', limits,
-                   label, f'{name} — {title}')
+                   label, f'{name} — {title}', label_size=16, tick_size=14, nbins=4,
+                   aspect='auto', colorbar_size='6%')
     fig.tight_layout()
     _save(fig, directory/filename)
 
 
 def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
-                       burn_in=17500, stride=10):
+                       burn_in=17500, stride=10, clip_percentile=99):
+    if not 50 <= clip_percentile < 100:
+        raise ValueError('clip_percentile must be in [50, 100)')
     truth_dir, checkpoint_root = Path(truth_dir), Path(checkpoint_root)
     with np.load(truth_dir/'truth'/'models.npz') as data:
         truth = {key: data[key] for key in
@@ -263,45 +290,73 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
     figures.mkdir(exist_ok=True)
     means = [posterior[survey].mean(axis=0) for survey in SURVEYS]
     stds = [posterior[survey].std(axis=0) for survey in SURVEYS]
+    stds_km = [item/1000 for item in stds]
+    reservoir_union = truth['mask_R1'] | truth['mask_R2']
     vp_limits = (float(min(item.min() for item in means)/1000),
                  float(max(item.max() for item in means)/1000))
     _plot_fields(figures, grid, [item/1000 for item in means], SURVEYS,
-                 'vp_posterior_mean.png', 'jet', vp_limits, 'Velocity (km/s)')
-    _plot_fields(figures, grid, stds, SURVEYS, 'vp_posterior_std.png', 'gray',
-                 (0, float(max(item.max() for item in stds))), 'Posterior std (m/s)')
+                 'vp_posterior_mean.png', 'jet', vp_limits, 'Vp (km/s)')
+    std_limit = (0, _robust_upper_limit(
+        [item[reservoir_union] for item in stds_km], clip_percentile))
+    _plot_fields(figures, grid, stds_km, SURVEYS, 'vp_posterior_std.png', 'viridis',
+                 std_limit, 'σ(Vp) (km/s)')
     deltas = [(posterior['monitor1']-posterior['baseline']).mean(axis=0),
               (posterior['monitor2']-posterior['baseline']).mean(axis=0),
               (posterior['monitor2']-posterior['monitor1']).mean(axis=0)]
-    limit = max(float(np.max(np.abs(item))) for item in deltas)
-    _plot_fields(figures, grid, deltas, ['Monitor 1 - baseline', 'Monitor 2 - baseline',
-                                         'Monitor 2 - monitor 1'],
-                 'vp_delta_mean.png', 'gray', (-limit, limit), 'Velocity difference (m/s)')
+    deltas_km = [item/1000 for item in deltas]
+    delta_limit = _robust_symmetric_limit(
+        [item[reservoir_union] for item in deltas_km], clip_percentile)
+    _plot_fields(figures, grid, deltas_km, ['M1 - baseline', 'M2 - baseline',
+                                            'M2 - M1'],
+                 'vp_delta_mean.png', 'RdBu_r', (-delta_limit, delta_limit), 'ΔVp (km/s)')
     probabilities = [_difference_probability(posterior['monitor1'], posterior['baseline'], rng),
                      _difference_probability(posterior['monitor2'], posterior['baseline'], rng),
                      _difference_probability(posterior['monitor2'], posterior['monitor1'], rng)]
-    _plot_fields(figures, grid, probabilities, ['P(M1 > baseline)', 'P(M2 > baseline)',
-                                                'P(M2 > M1)'],
-                 'vp_delta_probability_increase.png', 'jet', (0, 1), 'Probability')
+    _plot_fields(figures, grid, probabilities, ['P(M1 > B)', 'P(M2 > B)', 'P(M2 > M1)'],
+                 'vp_delta_probability_increase.png', 'jet', (0, 1), 'P(ΔVp > 0)')
+    report['display'] = {'velocity_units': 'km/s', 'clip_percentile': float(clip_percentile),
+                         'clip_region': 'R1|R2', 'std_limit_km_s': float(std_limit[1]),
+                         'delta_limit_km_s': float(delta_limit)}
+    report['notes'].append('full-section colour limits use reservoir-union percentiles; '
+                           'control-region values may saturate')
 
     # Zoomed panels: R1/R2 are too small to assess on the full section.
     for name in masks:
         truth_fields = [truth['v_true'][k]/1000 for k in range(3)]
         mean_fields = [means[k]/1000 for k in range(3)]
+        mask = truth['mask_'+name]
+        local = np.concatenate([field[mask] for field in truth_fields]
+                               + [field[mask] for field in mean_fields])
+        low, high = float(np.percentile(local, 1)), float(np.percentile(local, 99))
+        span = max(high-low, 1e-6)
+        local_limits = (low-0.05*span, high+0.05*span)
         _plot_zoom(figures, truth, [(name, 'Truth'), (name, 'Posterior mean')], SURVEYS,
                    [truth_fields, mean_fields], f'vp_truth_vs_posterior_{name}.png',
-                   'jet', vp_limits, 'Velocity (km/s)')
-    std_limit = (0, float(max(item.max() for item in stds)))
+                   'jet', local_limits, 'Vp (km/s)')
+    # Per-reservoir zoom limits; the reservoirs have very different amplitudes.
+    std_row_limits, delta_row_limits = [], []
+    for name in ('R1', 'R2'):
+        mask = truth['mask_'+name]
+        std_row_limits.append((0, _robust_upper_limit(
+            [stds_km[k][mask] for k in range(3)], clip_percentile)))
+        row_limit = _robust_symmetric_limit(
+            [deltas_km[k][mask] for k in range(3)], clip_percentile)
+        delta_row_limits.append((-row_limit, row_limit))
     _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')], SURVEYS,
-               [[stds[k] for k in range(3)], [stds[k] for k in range(3)]],
-               'vp_posterior_std_zoom.png', 'gray', std_limit, 'Posterior std (m/s)')
+               [[stds_km[k] for k in range(3)], [stds_km[k] for k in range(3)]],
+               'vp_posterior_std_zoom.png', 'viridis', std_row_limits, 'σ(Vp) (km/s)')
     _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')],
-               ['M1 - baseline', 'M2 - baseline', 'M2 - M1'],
-               [deltas, deltas], 'vp_delta_mean_zoom.png', 'gray', (-limit, limit),
-               'Velocity difference (m/s)')
+               ['M1 - B', 'M2 - B', 'M2 - M1'],
+               [deltas_km, deltas_km], 'vp_delta_mean_zoom.png', 'RdBu_r',
+               delta_row_limits, 'ΔVp (km/s)')
     _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')],
-               ['P(M1 > baseline)', 'P(M2 > baseline)', 'P(M2 > M1)'],
+               ['P(M1 > B)', 'P(M2 > B)', 'P(M2 > M1)'],
                [probabilities, probabilities], 'vp_delta_probability_zoom.png', 'jet',
-               (0, 1), 'Probability')
+               (0, 1), 'P(ΔVp > 0)')
+    report['display']['zoom_std_limits_km_s'] = {
+        name: float(limit[1]) for name, limit in zip(('R1', 'R2'), std_row_limits)}
+    report['display']['zoom_delta_limits_km_s'] = {
+        name: float(limit[1]) for name, limit in zip(('R1', 'R2'), delta_row_limits)}
     so_fields = {name: [None, None, None] for name in masks}
     for name, mask in masks.items():
         params = PetroParameters(**cfg['rock_physics'][name])
@@ -312,7 +367,7 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
             field[mask] = so.mean(axis=0)
             so_fields[name][index] = field
     _plot_saturation(figures, truth, so_fields, SURVEYS, 'saturation_posterior_mean.png',
-                     'Oil saturation (fraction)')
+                     'So')
     decrease = {name: [None, None] for name in masks}
     for name, mask in masks.items():
         params = PetroParameters(**cfg['rock_physics'][name])
@@ -323,8 +378,8 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
             field = np.full(grid.shape_zx, np.nan)
             field[mask] = _saturation_probability_decrease(so, baseline_so, rng)
             decrease[name][index] = field
-    _plot_saturation(figures, truth, decrease, ['P(So M1 < So base)', 'P(So M2 < So base)'],
-                     'saturation_probability_decrease.png', 'Probability')
+    _plot_saturation(figures, truth, decrease, ['P(So M1 < base)', 'P(So M2 < base)'],
+                     'saturation_probability_decrease.png', 'P(So ↓)')
     report['outputs'] = {'statistics': str(output/'statistics.json'),
                          'csv': str(output/'region_statistics.csv'),
                          'figures': str(figures)}

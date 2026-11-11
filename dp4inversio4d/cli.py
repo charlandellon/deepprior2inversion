@@ -37,6 +37,8 @@ def main():
     stats.add_argument('--output', default=None)
     stats.add_argument('--burn-in', type=int, default=17500)
     stats.add_argument('--stride', type=int, default=10)
+    stats.add_argument('--clip-percentile', type=float, default=99.0,
+                       help='percentile used for robust std/difference colour limits')
 
     gathers = commands.add_parser('gathers', help='plot central clean/noisy gathers')
     gathers.add_argument('--truth', required=True)
@@ -82,7 +84,8 @@ def main():
                 args.nrec, args.nsimsrc, args.freq), indent=2))
     else:
         report = compute_statistics(args.truth, args.checkpoints, args.tag,
-                                    args.output, args.burn_in, args.stride)
+                                    args.output, args.burn_in, args.stride,
+                                    args.clip_percentile)
         print(json.dumps(report, indent=2))
 
 

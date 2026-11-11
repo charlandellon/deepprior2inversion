@@ -9,10 +9,12 @@ CHECKPOINTS="data/checkpoints"
 TAG="expanded4d"
 BURN_IN=17500
 STRIDE=10
+CLIP_PERCENTILE=99
 OUTPUT="$TRUTH/statistics"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 "$PYTHON" -m dp4inversio4d stats --truth "$TRUTH" --checkpoints "$CHECKPOINTS" \
-  --tag "$TAG" --burn-in "$BURN_IN" --stride "$STRIDE" --output "$OUTPUT"
+  --tag "$TAG" --burn-in "$BURN_IN" --stride "$STRIDE" \
+  --clip-percentile "$CLIP_PERCENTILE" --output "$OUTPUT"
