@@ -278,7 +278,7 @@ class SeismicSetup(object):
         """
         f0 = 5
         vel_path = datadir("velocity_model")
-        path = os.path.join(vel_path, f'marmousi2-model-true-large_freq_{f0}.pth')
+        path = getattr(self.args, 'model_path', None) or os.path.join(vel_path, f'marmousi2-model-true-large_freq_{f0}.pth')
         model_vp = load_torch_file(path)
         vp = model_vp['vp']
         self.spacing = (model_vp['dx'], model_vp['dy'])
@@ -292,7 +292,7 @@ class SeismicSetup(object):
 
         # vp_mask = np.where(vp == 1.5, 0, vp_mask)
 
-        path = os.path.join(vel_path, f'marmousi2-model-smooth-linear_freq_{f0}.pth')
+        path = getattr(self.args, 'background_path', None) or os.path.join(vel_path, f'marmousi2-model-smooth-linear_freq_{f0}.pth')
         model_vp_smooth = load_torch_file(path)
         vp_smooth = model_vp_smooth['vp']
 
@@ -600,14 +600,21 @@ def simulate_sequential_data(args: argparse.Namespace):
             d_lin[idx, :, :] = d.detach().numpy().astype(np.float32)
 
         # Add noise to get observed data (-8.7466 dB)
-        kernel = np.outer(imaging_setup.wavelet[:imaging_setup.np_kernel],
-                            imaging_setup.wavelet[:imaging_setup.np_kernel])
-        for j in range(d_lin.shape[0]):
-            e = args.sigma * np.random.randn(*d_lin.shape[1:])
-            e = signal.fftconvolve(e, kernel, mode='same')
-            e *= 1 / np.linalg.norm(e)
-            e *= np.sqrt(np.prod(e.shape)) * args.sigma
-            d_lin[j, ...] += e
+        if getattr(args, 'noise_type', 'wavelet_correlated') == 'white_gaussian':
+            # Independent observations; no wavelet filtering or realization
+            # normalization, so the generating variance is exactly sigma**2.
+            rng = np.random.default_rng(getattr(args, 'seed', 42))
+            d_lin[...] += args.sigma*rng.standard_normal(
+                d_lin.shape).astype(np.float32)
+        else:
+            kernel = np.outer(imaging_setup.wavelet[:imaging_setup.np_kernel],
+                                imaging_setup.wavelet[:imaging_setup.np_kernel])
+            for j in range(d_lin.shape[0]):
+                e = args.sigma * np.random.randn(*d_lin.shape[1:])
+                e = signal.fftconvolve(e, kernel, mode='same')
+                e *= 1 / np.linalg.norm(e)
+                e *= np.sqrt(np.prod(e.shape)) * args.sigma
+                d_lin[j, ...] += e
 
         data_file.close()
 

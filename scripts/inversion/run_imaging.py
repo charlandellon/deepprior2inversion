@@ -165,6 +165,27 @@ parser.add_argument('--freq',
                     default=5.0,
                     help='Define the frequence of the modelling')
 
+parser.add_argument('--noise_type',
+                    dest='noise_type',
+                    choices=['wavelet_correlated', 'white_gaussian'],
+                    default='wavelet_correlated',
+                    help='Observed-data noise model; default is the legacy correlated noise')
+
+parser.add_argument('--model_path',
+                    dest='model_path',
+                    default=None,
+                    help='Optional truth PTH in the legacy marmousi2-model-true format')
+
+parser.add_argument('--background_path',
+                    dest='background_path',
+                    default=None,
+                    help='Optional background PTH in the legacy smooth-linear format')
+
+parser.add_argument('--short_output',
+                    dest='short_output',
+                    action='store_true',
+                    help='Use compact 4d/<experiment> output paths to avoid Windows MAX_PATH')
+
 parser.add_argument('--nsimsrc',
                     dest='nsimsrc',
                     type=int,
@@ -212,14 +233,20 @@ def main():
 
     args.file_seq_data = f'{args.file_seq_data[:-3]}_sigma_{args.sigma}_{args.file_seq_data[-3:]}'
 
-    args.file_result_figs = f'ch_encoding_{args.ch_encoding}_ch_decoding_{args.ch_decoding}_ch_skip_{args.ch_skip}_Latente_scale_{args.upsample_scale}-scale_{args.scale}_{args.file_result_figs}_max_itr-{args.max_itr}_sigma' \
-                            f'-{args.sigma}_lr-{args.lr}_lr_final-{args.lr_final}_' \
-                            f'wd-{args.wd}_gamma-{args.gamma}_seed-{args.seed}_nsrc-{args.nsrc}_nrec-{args.nrec}_freq-{args.freq}Hz'
+    if args.short_output:
+        # Keep the legacy long names for default runs. Windows bind mounts limit
+        # paths to 260 characters; the compact form avoids that limit verbatim.
+        args.file_result_figs = os.sep.join(['4d', args.experiment])
+        args.experiment = os.sep.join([args.file_result_figs, args.experiment])
+    else:
+        args.file_result_figs = f'ch_encoding_{args.ch_encoding}_ch_decoding_{args.ch_decoding}_ch_skip_{args.ch_skip}_Latente_scale_{args.upsample_scale}-scale_{args.scale}_{args.file_result_figs}_max_itr-{args.max_itr}_sigma' \
+                                f'-{args.sigma}_lr-{args.lr}_lr_final-{args.lr_final}_' \
+                                f'wd-{args.wd}_gamma-{args.gamma}_seed-{args.seed}_nsrc-{args.nsrc}_nrec-{args.nrec}_freq-{args.freq}Hz'
 
-    # Experiment name according to input arguments.
-    args.experiment = (os.sep.join([args.file_result_figs, f'{args.experiment}_max_itr-{args.max_itr}_sigma'
-                       f'-{args.sigma}_lr-{args.lr}_lr_final-{args.lr_final}_'
-                       f'wd-{args.wd}_gamma-{args.gamma}_nsrc-{args.nsrc}_nrec-{args.nrec}']))
+        # Experiment name according to input arguments.
+        args.experiment = (os.sep.join([args.file_result_figs, f'{args.experiment}_max_itr-{args.max_itr}_sigma'
+                           f'-{args.sigma}_lr-{args.lr}_lr_final-{args.lr_final}_'
+                           f'wd-{args.wd}_gamma-{args.gamma}_nsrc-{args.nsrc}_nrec-{args.nrec}']))
 
     if args.phase == 'sample':
         imaging_instance = DeepPriorImaging(args)

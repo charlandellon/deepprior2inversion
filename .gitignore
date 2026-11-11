@@ -136,3 +136,5 @@ dp4inversion/__pycache__
 *.sif
 *.mp4
 *.gif
+*.pdf
+*.md

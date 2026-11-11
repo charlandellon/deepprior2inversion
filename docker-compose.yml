@@ -1,0 +1,32 @@
+services:
+  seismic:
+    image: deepprior2inversion:local
+    build: .
+    container_name: deepprior2inversion
+    restart: unless-stopped
+    command: tail -f /dev/null
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - type: bind
+        source: ${SEISMIC_DATA_DIR:-D:/data/deepprior2inversion}
+        target: /workspace/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SEISMIC_DATA_DIR:-D:/data/deepprior2inversion}/outputs/4d
+        target: /workspace/outputs/4d
+        bind:
+          create_host_path: false
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: 2gb
+    environment:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "4"
+      DEVITO_LANGUAGE: openmp

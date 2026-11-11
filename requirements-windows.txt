@@ -1,0 +1,15 @@
+# Install PyTorch separately from its CUDA wheel index (see README).
+devito
+h5py
+matplotlib
+numpy
+tqdm
+pandas
+seaborn
+GitPython
+scipy
+obspy
+opencv-python
+imageio
+pytest
+PyYAML

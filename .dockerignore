@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements-windows.txt
+!setup.py
+!README.md
+!dp4inversion/
+!dp4inversion/**
+**/__pycache__/
+**/*.pyc
