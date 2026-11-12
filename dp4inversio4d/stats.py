@@ -13,6 +13,7 @@ from .plotting import DPI, FIGSIZE, _extent_km, _image, _save
 from .rock_physics import PetroParameters, gassmann
 
 SURVEYS = ('baseline', 'monitor1', 'monitor2')
+SURVEY_LABELS = {'baseline': 'Baseline', 'monitor1': 'M1', 'monitor2': 'M2'}
 
 
 def load_posterior(path, burn_in=17500, stride=10):
@@ -175,11 +176,15 @@ def _plot_zoom(directory, truth, row_specs, columns, fields, filename, cmap, lim
     fig, axes = plt.subplots(len(row_specs), len(columns),
                              figsize=(5.8*len(columns), 4.4*len(row_specs)), squeeze=False)
     for row_index, (reservoir, row_label) in enumerate(row_specs):
+        mask = truth['mask_'+reservoir]
         crop, extent = _reservoir_crop(truth, reservoir)
         row_limits = limits[row_index] if per_row else limits
         for column_index, title in enumerate(columns):
-            _image(axes[row_index, column_index], fields[row_index][column_index][crop],
-                   extent, cmap, row_limits, label, f'{row_label} — {title}',
+            field = fields[row_index][column_index]
+            masked = np.full(field.shape, np.nan, dtype=float)
+            masked[mask] = field[mask]
+            _image(axes[row_index, column_index], masked[crop],
+                   extent, cmap, row_limits, label, f'{row_label}: {title}',
                    label_size=16, tick_size=14, nbins=4, aspect='auto',
                    colorbar_size='6%')
     fig.tight_layout()
@@ -198,7 +203,7 @@ def _plot_saturation(directory, truth, fields, titles, filename, label, limits=(
         extent = [x[ix[0]]/1000, x[ix[-1]]/1000, z[iz[-1]]/1000, z[iz[0]]/1000]
         for column, (field, title) in enumerate(zip(fields[name], titles)):
             _image(axes[row, column], field[np.ix_(iz, ix)], extent, 'jet', limits,
-                   label, f'{name} — {title}', label_size=16, tick_size=14, nbins=4,
+                   label, f'{name}: {title}', label_size=16, tick_size=14, nbins=4,
                    aspect='auto', colorbar_size='6%')
     fig.tight_layout()
     _save(fig, directory/filename)
@@ -294,20 +299,20 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
     reservoir_union = truth['mask_R1'] | truth['mask_R2']
     vp_limits = (float(min(item.min() for item in means)/1000),
                  float(max(item.max() for item in means)/1000))
-    _plot_fields(figures, grid, [item/1000 for item in means], SURVEYS,
+    _plot_fields(figures, grid, [item/1000 for item in means],
+                 [SURVEY_LABELS[item] for item in SURVEYS],
                  'vp_posterior_mean.png', 'jet', vp_limits, 'Vp (km/s)')
     std_limit = (0, _robust_upper_limit(
         [item[reservoir_union] for item in stds_km], clip_percentile))
-    _plot_fields(figures, grid, stds_km, SURVEYS, 'vp_posterior_std.png', 'viridis',
-                 std_limit, 'σ(Vp) (km/s)')
+    _plot_fields(figures, grid, stds_km, [SURVEY_LABELS[item] for item in SURVEYS],
+                 'vp_posterior_std.png', 'viridis', std_limit, 'σ(Vp) (km/s)')
     deltas = [(posterior['monitor1']-posterior['baseline']).mean(axis=0),
               (posterior['monitor2']-posterior['baseline']).mean(axis=0),
               (posterior['monitor2']-posterior['monitor1']).mean(axis=0)]
     deltas_km = [item/1000 for item in deltas]
     delta_limit = _robust_symmetric_limit(
         [item[reservoir_union] for item in deltas_km], clip_percentile)
-    _plot_fields(figures, grid, deltas_km, ['M1 - baseline', 'M2 - baseline',
-                                            'M2 - M1'],
+    _plot_fields(figures, grid, deltas_km, ['M1 − B', 'M2 − B', 'M2 − M1'],
                  'vp_delta_mean.png', 'RdBu_r', (-delta_limit, delta_limit), 'ΔVp (km/s)')
     probabilities = [_difference_probability(posterior['monitor1'], posterior['baseline'], rng),
                      _difference_probability(posterior['monitor2'], posterior['baseline'], rng),
@@ -330,7 +335,8 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
         low, high = float(np.percentile(local, 1)), float(np.percentile(local, 99))
         span = max(high-low, 1e-6)
         local_limits = (low-0.05*span, high+0.05*span)
-        _plot_zoom(figures, truth, [(name, 'Truth'), (name, 'Posterior mean')], SURVEYS,
+        _plot_zoom(figures, truth, [(name, 'Truth'), (name, 'Posterior mean')],
+                   [SURVEY_LABELS[item] for item in SURVEYS],
                    [truth_fields, mean_fields], f'vp_truth_vs_posterior_{name}.png',
                    'jet', local_limits, 'Vp (km/s)')
     # Per-reservoir zoom limits; the reservoirs have very different amplitudes.
@@ -342,11 +348,12 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
         row_limit = _robust_symmetric_limit(
             [deltas_km[k][mask] for k in range(3)], clip_percentile)
         delta_row_limits.append((-row_limit, row_limit))
-    _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')], SURVEYS,
+    _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')],
+               [SURVEY_LABELS[item] for item in SURVEYS],
                [[stds_km[k] for k in range(3)], [stds_km[k] for k in range(3)]],
                'vp_posterior_std_zoom.png', 'viridis', std_row_limits, 'σ(Vp) (km/s)')
     _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')],
-               ['M1 - B', 'M2 - B', 'M2 - M1'],
+               ['(M1 − B)', '(M2 − B)', '(M2 − M1)'],
                [deltas_km, deltas_km], 'vp_delta_mean_zoom.png', 'RdBu_r',
                delta_row_limits, 'ΔVp (km/s)')
     _plot_zoom(figures, truth, [('R1', 'R1'), ('R2', 'R2')],
@@ -366,8 +373,9 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
             field = np.full(grid.shape_zx, np.nan)
             field[mask] = so.mean(axis=0)
             so_fields[name][index] = field
-    _plot_saturation(figures, truth, so_fields, SURVEYS, 'saturation_posterior_mean.png',
-                     'So')
+    _plot_saturation(figures, truth, so_fields,
+                     [SURVEY_LABELS[item] for item in SURVEYS],
+                     'saturation_posterior_mean.png', 'So')
     decrease = {name: [None, None] for name in masks}
     for name, mask in masks.items():
         params = PetroParameters(**cfg['rock_physics'][name])
@@ -378,7 +386,8 @@ def compute_statistics(truth_dir, checkpoint_root, tag, output=None,
             field = np.full(grid.shape_zx, np.nan)
             field[mask] = _saturation_probability_decrease(so, baseline_so, rng)
             decrease[name][index] = field
-    _plot_saturation(figures, truth, decrease, ['P(So M1 < base)', 'P(So M2 < base)'],
+    _plot_saturation(figures, truth, decrease,
+                     ['P(So M1 < baseline)', 'P(So M2 < baseline)'],
                      'saturation_probability_decrease.png', 'P(So ↓)')
     report['outputs'] = {'statistics': str(output/'statistics.json'),
                          'csv': str(output/'region_statistics.csv'),

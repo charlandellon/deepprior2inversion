@@ -194,6 +194,9 @@ class DeepPriorImaging(object):
                                             scale=args.scale)
             if 'optimizer_state' in attrs:
                 self.sampler.load_state_dict(attrs['optimizer_state'])
+            # The checkpoint stores the old sampler scale; enforce the launch value.
+            for param_group in self.sampler.param_groups:
+                param_group['scale'] = args.scale
 
         except Exception as e:
             print(f'Não foi possível carregar o modelo! Iniciando treinamento do início. Motivo: {e}')
@@ -213,6 +216,11 @@ class DeepPriorImaging(object):
 
         # Learning rate decay function.
         self.lr_fn = decay_fn(args)
+        self.scale_initial = float(args.scale)
+        scale_final = getattr(args, 'scale_final', None)
+        self.scale_final = float(args.scale if scale_final is None else scale_final)
+        self.scale_anneal_start = int(getattr(args, 'scale_anneal_start', 0) or 0)
+        self.scale_anneal_end = int(getattr(args, 'scale_anneal_end', 0) or 0)
 
         if args.upsample_scale == 1:
             plot_reflectivity(z.squeeze().detach().cpu().numpy(), self.imaging_setup.model,
@@ -417,4 +425,17 @@ class DeepPriorImaging(object):
         """
         for param_group in self.sampler.param_groups:
             param_group['lr'] = self.lr_fn(itr)
-            # print(f'minha real lr {param_group['lr']} - it {itr}')
+            param_group['scale'] = self.scale_at(itr)
+
+    def scale_at(self, itr: int) -> float:
+        """Return the Langevin noise scale at iteration ``itr``."""
+        start = self.scale_anneal_start
+        end = self.scale_anneal_end
+        if end <= start:
+            return self.scale_final
+        if itr <= start:
+            return self.scale_initial
+        if itr >= end:
+            return self.scale_final
+        fraction = (itr - start) / (end - start)
+        return self.scale_initial + fraction * (self.scale_final - self.scale_initial)

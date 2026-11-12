@@ -132,6 +132,24 @@ parser.add_argument('--scale',
                     default=1.0,
                     help='Scale of noise in the gradients parameters of the CNN')
 
+parser.add_argument('--scale_final',
+                    dest='scale_final',
+                    type=float,
+                    default=None,
+                    help='Final Langevin noise scale; defaults to --scale')
+
+parser.add_argument('--scale_anneal_start',
+                    dest='scale_anneal_start',
+                    type=int,
+                    default=0,
+                    help='Iteration where the scale anneal starts')
+
+parser.add_argument('--scale_anneal_end',
+                    dest='scale_anneal_end',
+                    type=int,
+                    default=0,
+                    help='Iteration where the scale anneal ends')
+
 parser.add_argument('--ch_encoding',
                     dest='ch_encoding',
                     type=int,

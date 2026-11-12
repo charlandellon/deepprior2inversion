@@ -118,7 +118,7 @@ def plot_baseline_replacement(directory, grid, original, baseline, masks, reserv
     change = (baseline-original)/1000
     limit = max(float(np.max(abs(change))), 1e-12)
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    _image(ax, change, extent, 'gray', (-limit, limit), 'Static velocity change (km/s)')
+    _image(ax, change, extent, 'RdBu_r', (-limit, limit), 'ΔVp (km/s)')
     _save(fig, directory/'static_baseline_change.png')
     x, z = grid.axes
     for name, cfg in reservoirs.items():
@@ -186,7 +186,7 @@ def plot_reservoir_expansion(directory, grid, before, after, old_masks, masks, v
     fig, axes = plt.subplots(2, 3, figsize=(16, 9), squeeze=False)
     for row, name in enumerate(masks):
         ix, iz, crop, crop_extent = crops[name]
-        for k, label in enumerate(('Baseline', 'Monitor 1', 'Monitor 2')):
+        for k, label in enumerate(('Baseline', 'M1', 'M2')):
             _image(axes[row, k], so[k][crop], crop_extent, 'jet', (0, 1),
                    'Oil saturation (fraction)', f'{name} — {label}')
             outlines(axes[row, k], old_masks[name][crop], masks[name][crop], x[ix], z[iz])

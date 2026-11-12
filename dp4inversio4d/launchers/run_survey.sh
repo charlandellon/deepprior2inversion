@@ -31,7 +31,7 @@ LR=0.001
 LR_FINAL=0.0001
 WD=30.0
 GAMMA=-0.3333
-SCALE=10.0
+SCALE=1.0
 UPSCALE=1
 COARSE_OUTPUT_SCALE=1
 CH_ENCODING="16 16 16"
@@ -39,8 +39,8 @@ CH_DECODING="16 16 16"
 CH_SKIP="16 16 16"
 
 # Experiment naming
-EXPERIMENT_PREFIX="expanded4d"
-FILE_FIGS_PREFIX="4d/expanded4d"
+EXPERIMENT_PREFIX="expanded4d_s1"
+FILE_FIGS_PREFIX="4d/expanded4d_s1"
 DATA_PREFIX="expanded4d"
 
 # Independent chain seeds (also used for the white-noise realization)
