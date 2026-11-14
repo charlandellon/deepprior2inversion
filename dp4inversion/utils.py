@@ -837,16 +837,21 @@ def decay_fn(args: argparse.Namespace):
             return args.lr
     else:
         lag = 0
-        max_itr_lag = args.max_itr - lag
-        b = max_itr_lag / ((args.lr_final / args.lr)**(1 / args.gamma) - 1.0)
+        horizon = int(getattr(args, 'lr_decay_end', 0) or 0)
+        if horizon <= 0 or horizon > args.max_itr:
+            horizon = args.max_itr
+        b = horizon / ((args.lr_final / args.lr)**(1 / args.gamma) - 1.0)
         a = args.lr / (b**args.gamma)
         print(f'a: {a}')
         print(f'b: {b}')
-        def lr_fn(t, a=a, b=b, gamma=args.gamma, lag=lag):
+        print(f'lr_decay_end: {horizon}')
+        def lr_fn(t, a=a, b=b, gamma=args.gamma, lag=lag,
+                  horizon=horizon, lr_final=args.lr_final):
             if t < lag:
                 return args.lr
-            else:
-                return a * ((b + t)**gamma)
+            if t >= horizon:
+                return lr_final
+            return a * ((b + t)**gamma)
 
     return lr_fn
 

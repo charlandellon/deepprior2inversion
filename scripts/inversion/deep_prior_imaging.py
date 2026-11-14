@@ -206,6 +206,15 @@ class DeepPriorImaging(object):
                             dm.size()[-1] // args.upsample_scale)).to(self.device)
             currrent_it = 0
 
+        # Optional shared latent variable (same z across surveys).
+        if currrent_it == 0 and getattr(args, 'z_path', None):
+            z_loaded = torch.load(args.z_path, map_location=self.device,
+                                  weights_only=False)
+            if isinstance(z_loaded, dict):
+                z_loaded = z_loaded['z']
+            z = z_loaded.to(self.device)
+            print(f'z fixo carregado de {args.z_path}: {tuple(z.shape)}')
+
 
         total_params = sum(p.numel() for p in g.parameters())
         print("Número total de pesos na rede:", sum(p.numel() for p in g.parameters()))

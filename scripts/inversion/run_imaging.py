@@ -42,6 +42,12 @@ parser.add_argument('--gamma',
                     type=float,
                     default=-0.3333,
                     help='learning rate decay rate')
+parser.add_argument('--lr_decay_end',
+                    dest='lr_decay_end',
+                    type=int,
+                    default=0,
+                    help='iteration where lr reaches lr_final and stays constant; '
+                         '0 uses max_itr')
 parser.add_argument('--experiment',
                     dest='experiment',
                     default='deep-bayesian-inference',
@@ -57,6 +63,11 @@ parser.add_argument('--seed',
                     type=int,
                     default=42,
                     help='set seed for aleatory sample latent space')
+
+parser.add_argument('--z_path',
+                    dest='z_path',
+                    default=None,
+                    help='optional .pt tensor with the fixed latent variable z')
 
 parser.add_argument('--phase',
                     dest='phase',

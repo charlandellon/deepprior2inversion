@@ -128,40 +128,56 @@ def _plot_samples(directory, truth, posterior, survey, masks, grid, quantiles):
 
 
 def _plot_profiles(directory, profiles, masks, grid, titles):
-    fig, axes = plt.subplots(len(masks), len(titles), figsize=(16, 9), squeeze=False)
-    for row, region in enumerate(masks):
-        row_values = []
+    """Track-style profiles: depth vertical, Vp in narrow columns."""
+    n_surveys = len(titles)
+    n_regions = len(masks)
+    fig, axes = plt.subplots(
+        n_surveys, n_regions,
+        figsize=(2.9 * n_regions, 7.0 * n_surveys),
+        squeeze=False, sharey='row',
+    )
+    region_limits = {}
+    for region in masks:
+        values = []
         for survey in titles:
             item = profiles[survey][region]
-            row_values.extend(np.asarray(item['truth_m_s'])/1000.0)
-            row_values.extend(np.asarray(item['mean_m_s'])/1000.0)
-            row_values.extend(np.asarray(item['low_m_s'])/1000.0)
-            row_values.extend(np.asarray(item['high_m_s'])/1000.0)
-        low = min(row_values) - 0.01
-        high = max(row_values) + 0.01
-        for column, survey in enumerate(titles):
+            values.extend(np.asarray(item['truth_m_s']) / 1000.0)
+            values.extend(np.asarray(item['mean_m_s']) / 1000.0)
+            values.extend(np.asarray(item['low_m_s']) / 1000.0)
+            values.extend(np.asarray(item['high_m_s']) / 1000.0)
+        region_limits[region] = (min(values) - 0.01, max(values) + 0.01)
+
+    for row, survey in enumerate(titles):
+        for column, region in enumerate(masks):
             item = profiles[survey][region]
             axis = axes[row, column]
-            truth = np.asarray(item['truth_m_s'])/1000.0
-            mean = np.asarray(item['mean_m_s'])/1000.0
-            low_ci = np.asarray(item['low_m_s'])/1000.0
-            high_ci = np.asarray(item['high_m_s'])/1000.0
+            truth = np.asarray(item['truth_m_s']) / 1000.0
+            mean = np.asarray(item['mean_m_s']) / 1000.0
+            low_ci = np.asarray(item['low_m_s']) / 1000.0
+            high_ci = np.asarray(item['high_m_s']) / 1000.0
             axis.fill_betweenx(item['z_km'], low_ci, high_ci,
                                color='tab:red', alpha=0.25, label='99% CI')
-            axis.plot(mean, item['z_km'], color='tab:green',
+            axis.plot(mean, item['z_km'], color='tab:green', linewidth=1.2,
                       label='Posterior mean')
-            axis.plot(truth, item['z_km'], color='tab:blue',
+            axis.plot(truth, item['z_km'], color='tab:blue', linewidth=1.0,
                       label='Truth')
-            axis.set_xlim(low, high)
+            axis.set_xlim(*region_limits[region])
             axis.set_ylim(max(item['z_km']), min(item['z_km']))
-            axis.set_title(f'{region} — {SURVEY_LABELS.get(survey, survey)}', fontsize=16)
-            axis.set_xlabel('Vp (km/s)', fontsize=16)
-            axis.set_ylabel('Depth (km)', fontsize=16)
-            axis.tick_params(labelsize=14)
+            axis.set_box_aspect(2.6)
+            axis.set_title(
+                f'{region} — {SURVEY_LABELS.get(survey, survey)}',
+                fontsize=11, pad=4,
+            )
+            axis.set_xlabel('Vp (km/s)', fontsize=10)
+            axis.set_ylabel('Depth (km)' if column == 0 else '', fontsize=10)
+            axis.tick_params(labelsize=8.5)
             axis.grid(alpha=0.3)
-            if row == 0 and column == 0:
-                axis.legend(fontsize=11, loc='lower right')
-    fig.tight_layout()
+            axis.locator_params(axis='both', nbins=5)
+
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', ncol=3, frameon=False,
+               fontsize=9, bbox_to_anchor=(0.5, 0.985))
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(directory/'profiles.png', dpi=DPI)
     plt.close(fig)
 
@@ -170,6 +186,7 @@ def _plot_full_vi(directory, fields, grid, surveys, limit):
     extent = [grid.axes[0][0]/1000, grid.axes[0][-1]/1000,
               grid.axes[1][-1]/1000, grid.axes[1][0]/1000]
     fig, axes = plt.subplots(len(surveys), 1, figsize=(3.3, 2.55))
+    axes = np.atleast_1d(axes)
     for axis, survey in zip(axes, surveys):
         image = axis.imshow(fields[survey], cmap='viridis', vmin=0, vmax=limit,
                             extent=extent, aspect='auto')
