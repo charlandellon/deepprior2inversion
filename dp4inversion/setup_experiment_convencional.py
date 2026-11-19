@@ -37,7 +37,7 @@ class ForwardBornLayer(torch.nn.Module):
 
 class ForwardModelingLayer(torch.nn.Module):
 
-    def __init__(self, model, src, geometry, device):
+    def __init__(self, model, src, geometry, device, dt=None):
         super(ForwardModelingLayer, self).__init__()
         self.forward_modelling = ForwardModelingConvencional()
         self.model = model
@@ -47,10 +47,12 @@ class ForwardModelingLayer(torch.nn.Module):
         self.solver = AcousticWaveSolver(self.model,
                                          self.geometry, kernel= 'OT2',
                                          space_order=self.model.space_order)
+        self.dt = float(dt) if dt is not None else float(self.solver.dt)
 
     def forward(self, x):
-        return self.forward_modelling.apply(x, self.src, self.model, self.geometry,
-                                       self.solver, self.device)
+        return self.forward_modelling.apply(x, self.src, self.model,
+                                            self.geometry, self.solver,
+                                            self.device, self.dt)
 
 
 class SeismicSetup(object):
@@ -509,7 +511,8 @@ class SeismicSetup(object):
                                        tn=self.tn,
                                        src_type='Ricker',
                                        f0=self.f0)
-        return ForwardModelingLayer(self.model, src, geometry, self.device)
+        return ForwardModelingLayer(self.model, src, geometry, self.device,
+                                    dt=self.dt)
 
     def create_op(self, src_idx=0):
         """

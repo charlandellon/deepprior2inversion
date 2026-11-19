@@ -13,19 +13,26 @@ from dp4inversion.setup_experiment import SeismicSetup, mute
 from .plotting import DPI
 
 
-def _setup_args(truth, survey, source_mode, nsrc, nrec, nsimsrc, freq):
+def _setup_args(truth, survey, source_mode, nsrc, nrec, nsimsrc, freq,
+                nbl=50, tmax_ms=None, deth_rec=2, deth_src=2,
+                edge_margin_m=0.0, water_depth_m=500.0, checkpointing=0,
+                num_checkpoints=0):
     models = truth/'truth'/'models'
     return Namespace(
         mode='legacy', vel_model='marmousi', model_path=str(models/f'{survey}.pth'),
         background_path=str(models/'background.pth'), bg_linear=1,
         nsrc=nsrc, nrec=nrec, nsimsrc=nsimsrc, freq=freq, sigma=0.0,
         cuda=0, dv=0.0, seed=42, tmax=None, noise_type='white_gaussian',
+        nbl=nbl, tmax_ms=tmax_ms, deth_rec=deth_rec, deth_src=deth_src,
+        edge_margin_m=edge_margin_m, water_depth_m=water_depth_m,
+        checkpointing=checkpointing, num_checkpoints=num_checkpoints,
         file_result_figs='4d/gather_qc')
 
 
 def _central_clean(truth, survey, source_mode, nsrc=100, nrec=400, nsimsrc=100,
-                   frequency_hz=5.0):
-    args = _setup_args(truth, survey, source_mode, nsrc, nrec, nsimsrc, frequency_hz)
+                   frequency_hz=5.0, **setup_kwargs):
+    args = _setup_args(truth, survey, source_mode, nsrc, nrec, nsimsrc,
+                       frequency_hz, **setup_kwargs)
     # DeepPriorImaging seeds NumPy with 42 before creating SeismicSetup, which
     # draws the simultaneous codes from the global stream.
     np.random.seed(42)
@@ -70,10 +77,11 @@ def _pair(clean, observed, extent, limit, snr_db, title):
 
 def plot_central_gather(truth, survey, data_path, source_mode='simult',
                         nsrc=100, nrec=400, nsimsrc=100, frequency_hz=5.0,
-                        output=None):
+                        output=None, **setup_kwargs):
     truth, data_path = Path(truth), Path(data_path)
     clean, index, setup, source_x = _central_clean(
-        truth, survey, source_mode, nsrc, nrec, nsimsrc, frequency_hz)
+        truth, survey, source_mode, nsrc, nrec, nsimsrc, frequency_hz,
+        **setup_kwargs)
     with h5py.File(data_path, 'r') as handle:
         observed = np.asarray(handle['data'][index], dtype=np.float64)
     if observed.shape != clean.shape:
@@ -82,7 +90,9 @@ def plot_central_gather(truth, survey, data_path, source_mode='simult',
     noise_power = float(np.mean((observed-clean)**2))
     if source_mode == 'sequential':
         mask = mute(__import__('torch').ones(clean.shape), source_x,
-                    np.linspace(0, setup.model.domain_size[0], nrec), setup.dt,
+                    np.linspace(setup.edge_margin,
+                                setup.model.domain_size[0] - setup.edge_margin,
+                                nrec), setup.dt,
                     clean.shape[0], 1.5, flat_len=300, taper_len=300,
                     device='cpu').numpy()
         signal_power = float(np.mean((clean*mask)**2))

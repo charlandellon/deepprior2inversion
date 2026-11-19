@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from scipy.ndimage import gaussian_filter, gaussian_filter1d
+from scipy.ndimage import gaussian_filter
 
 from .build_models import build_velocity_truth
 from .config import load_config
@@ -68,10 +68,8 @@ def build_models(config_path, output=None, seed=None, scenario=None):
     models = build_velocity_truth(
         original, so, masks, cfg['rock_physics'], cfg['dry_bulk_modulus_Pa'])
     velocity = models.v_true[0].copy()
-    background = gaussian_filter(velocity, cfg['model']['background_smoothing_sigma_cells'], mode='reflect')
-    # Same legacy background rule as the original generator, but applied once.
-    background = np.repeat(gaussian_filter1d(background.mean(axis=1), sigma=50)[:, None],
-                           background.shape[1], axis=1)
+    background = gaussian_filter(
+        velocity, cfg['model']['background_smoothing_sigma_cells'], mode='reflect')
     water_end = int(500/grid.spacing_xz_m[0])+1
     background[:water_end] = velocity[:water_end]
     union = masks['R1'] | masks['R2']

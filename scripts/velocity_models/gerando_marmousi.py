@@ -1,3 +1,4 @@
+import argparse
 import os
 import os
 from dp4inversion.utils import (calc_dx_dt, extract_data,
@@ -28,7 +29,11 @@ x_range = [2000, 14500] #m
 y_range = [0, 3500] #m
 
 
-f0 = 5
+parser = argparse.ArgumentParser()
+parser.add_argument('--f0', type=float, default=5.0)
+args = parser.parse_args()
+
+f0 = args.f0
 vp0 = np.max(marmousi_model['vp'])
 dx, dt = calc_dx_dt(f0 * 3, vp0, space_order=4)
 dy = dx

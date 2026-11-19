@@ -14,29 +14,45 @@ from .io import sha256
 LEGACY_SOURCE_SEED = 42
 
 
-def _args(model_path, background_path, nsrc, nrec, nsimsrc, freq):
+def _args(model_path, background_path, nsrc, nrec, nsimsrc, freq,
+          noise_type, nbl, tmax_ms, deth_rec, deth_src, edge_margin_m,
+          water_depth_m, checkpointing, num_checkpoints):
     return argparse.Namespace(
         mode='legacy', vel_model='marmousi', model_path=str(model_path),
         background_path=str(background_path), bg_linear=1,
         nsrc=nsrc, nrec=nrec, nsimsrc=nsimsrc, freq=freq, sigma=0.0,
         cuda=0, dv=0.0, seed=LEGACY_SOURCE_SEED, tmax=None,
-        noise_type='white_gaussian', file_result_figs='4d/calibration')
+        noise_type=noise_type, nbl=nbl, tmax_ms=tmax_ms,
+        deth_rec=deth_rec, deth_src=deth_src, edge_margin_m=edge_margin_m,
+        water_depth_m=water_depth_m, checkpointing=checkpointing,
+        num_checkpoints=num_checkpoints,
+        file_result_figs='4d/calibration')
 
 
 def calibrate_survey(truth, survey, source_mode='simult', nsrc=100, nrec=400,
-                     frequency_hz=5.0, target_snr_db=6.0, nsimsrc=None):
+                     frequency_hz=5.0, target_snr_db=6.0, nsimsrc=None,
+                     noise_type='white_gaussian', nbl=50, tmax_ms=None,
+                     deth_rec=2, deth_src=2, edge_margin_m=0.0,
+                     water_depth_m=500.0, checkpointing=0,
+                     num_checkpoints=0, sigma_name='', sigma_value=None):
     nsimsrc = nsrc if nsimsrc is None else nsimsrc
     truth = Path(truth)
     models = truth/'truth'/'models'
     model_path, background_path = models/f'{survey}.pth', models/'background.pth'
     if not model_path.is_file() or not background_path.is_file():
         raise FileNotFoundError('run build-models first: missing legacy PTH inputs')
-    cfg_args = _args(model_path, background_path, nsrc, nrec, nsimsrc, frequency_hz)
+    cfg_args = _args(model_path, background_path, nsrc, nrec, nsimsrc,
+                     frequency_hz, noise_type, nbl, tmax_ms, deth_rec,
+                     deth_src, edge_margin_m, water_depth_m, checkpointing,
+                     num_checkpoints)
     setup = SeismicSetup(cfg_args, device=False, sim_source=False)
-    receivers_x = np.linspace(0, setup.model.domain_size[0], num=setup.nrec)
+    receivers_x = np.linspace(setup.edge_margin,
+                              setup.model.domain_size[0] - setup.edge_margin,
+                              num=setup.nrec)
     gathers = np.empty((setup.nsrc, setup.nt, setup.nrec), dtype=np.float32)
-    for index in range(setup.nsrc):
-        gathers[index] = setup.create_op(index)(setup.dm).detach().numpy().astype(np.float32)
+    with torch.no_grad():
+        for index in range(setup.nsrc):
+            gathers[index] = setup.create_op(index)(setup.dm).detach().numpy().astype(np.float32)
     if source_mode == 'sequential':
         energy = 0.0
         for index in range(setup.nsrc):
@@ -62,15 +78,21 @@ def calibrate_survey(truth, survey, source_mode='simult', nsrc=100, nrec=400,
     signal_power = energy/sample_count
     gain = 1.0 if source_mode == 'sequential' else noise_gain
     sigma = float(np.sqrt(signal_power/(gain*10**(target_snr_db/10))))
+    if sigma_value is not None:
+        sigma = float(sigma_value)
     report = dict(survey=survey, source_mode=source_mode, sigma=sigma,
                   target_snr_db=float(target_snr_db), snr_reference=snr_reference,
                   signal_power=float(signal_power), noise_gain=gain,
                   sample_count=int(sample_count),
                   nsrc=setup.nsrc, nrec=setup.nrec, nt=setup.nt,
+                  nbl=int(nbl), noise_type=noise_type,
                   dt_ms=float(setup.dt), duration_s=float(setup.tn/1000.0),
                   model_sha256=sha256(model_path),
                   background_sha256=sha256(background_path),
                   calibration_method='expected_unit_variance_white_gaussian')
-    destination = models/f'sigma_{survey}.json'
+    if sigma_value is not None:
+        report['sigma_override'] = float(sigma_value)
+    prefix = f'sigma_{sigma_name}' if sigma_name else 'sigma'
+    destination = models/f'{prefix}_{survey}.json'
     destination.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     return report

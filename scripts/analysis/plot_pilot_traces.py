@@ -27,7 +27,7 @@ for key, label in (('rmse_model', 'RMSE model (km/s)'),
         values = np.asarray(checkpoint[source], dtype=float)[25000:]
         ax.plot(np.arange(25000, 25000 + len(values)), values, label=name,
                 linewidth=0.9)
-    ax.set(xlabel='iteration', ylabel=label)
+    ax.set(xlabel='Steps', ylabel=label)
     ax.legend()
     if key == 'objective':
         ax.set_yscale('log')

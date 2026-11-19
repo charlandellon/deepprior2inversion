@@ -270,7 +270,7 @@ def plot_rmse(error, file_name, extents=None, y_label='RMSE'):
     plt.figure(figsize=(15, 4))
     plt.plot(itr, error)
     # plt.title('')
-    plt.xlabel('Iteration')
+    plt.xlabel('Steps')
     plt.ylabel(y_label)
     # plt.yscale('log')
     # plt.xscale('log')

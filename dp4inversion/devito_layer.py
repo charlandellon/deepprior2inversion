@@ -106,13 +106,17 @@ class ForwardModeling(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input: torch.Tensor, src: WaveletSource, model: Model,
                 geometry: AcquisitionGeometry, solver: AcousticWaveSolver,
-                device: torch.device) -> torch.Tensor:
+                device: torch.device, checkpointing: bool = False,
+                num_checkpoints: int = 0, dt: float = None) -> torch.Tensor:
 
         ctx.model = model
         ctx.geometry = geometry
         ctx.solver = solver
         ctx.device = device
         ctx.src = src
+        ctx.checkpointing = bool(checkpointing)
+        ctx.num_checkpoints = int(num_checkpoints)
+        ctx.dt = float(dt) if dt is not None else float(solver.dt)
 
         # input = input.cpu().detach()
         # input = torch.nn.ReplicationPad2d((ctx.model.nbl))(input).numpy()
@@ -124,15 +128,19 @@ class ForwardModeling(torch.autograd.Function):
         # print(f'minimum: {input.min()} \n maximum: {input.max()}')
 
         # input = (input - input.min()) * (4.8 - 1.5) / (input.max() - input.min()) + 1.5
-        vp = Function(name='vp', grid=ctx.model.grid,
-                    space_order=ctx.model.space_order)
-        initialize_function(vp, input[0, 0, ...].detach().cpu().numpy()**(-0.5), ctx.model.nbl)
-        ctx.model.vp = vp
+        # Update the existing Function in place: replacing model.vp with a new
+        # Function would leave memoized operators bound to the old m = 1/vp**2.
+        initialize_function(ctx.model.vp,
+                            input[0, 0, ...].detach().cpu().numpy()**(-0.5),
+                            ctx.model.nbl)
 
         # ctx.solver = AcousticWaveSolver(ctx.model, ctx.geometry, space_order=ctx.model.space_order)
 
-        # Nonlinear forward modeling
-        d_nonlin, ctx.u0 = ctx.solver.forward(src=src, vp=ctx.model.vp, model=ctx.model, save=True)[:2]
+        # Nonlinear forward modeling.  With checkpointing the full time history
+        # is not kept; the adjoint recomputes it during the reverse pass.
+        d_nonlin, ctx.u0 = ctx.solver.forward(
+            src=src, vp=ctx.model.vp, model=ctx.model, dt=ctx.dt,
+            save=not ctx.checkpointing)[:2]
 
         # d_nonlin = np.array(d_nonlin.data)
         d_nonlin = torch.from_numpy(np.array(d_nonlin.data)).to(ctx.device)
@@ -148,7 +156,16 @@ class ForwardModeling(torch.autograd.Function):
         rec = ctx.geometry.rec
         rec.data[:] = grad_output[:]
 
-        g = ctx.solver.jacobian_adjoint(rec, model=ctx.model, vp=ctx.model.vp, u=ctx.u0)[0].data
+        if ctx.checkpointing and ctx.num_checkpoints > 0:
+            g = _revolver_gradient(ctx, rec)
+        elif ctx.checkpointing:
+            g = ctx.solver.jacobian_adjoint(
+                rec, ctx.u0, src=ctx.src, model=ctx.model, vp=ctx.model.vp,
+                dt=ctx.dt, checkpointing=True)[0].data
+        else:
+            g = ctx.solver.jacobian_adjoint(
+                rec, model=ctx.model, vp=ctx.model.vp, u=ctx.u0,
+                dt=ctx.dt)[0].data
 
         # Remove padding
         nb = ctx.model.nbl
@@ -169,7 +186,36 @@ class ForwardModeling(torch.autograd.Function):
         # print(f'min_grad: {g.min()} max_grad: {g.max()}')
 
 
-        return g.view(1, 1, g.shape[0], g.shape[1]), None, None, None, None, None
+        return (g.view(1, 1, g.shape[0], g.shape[1]), None, None, None,
+                None, None, None, None, None)
+
+
+def _revolver_gradient(ctx, rec):
+    """Checkpointed adjoint with an explicit Revolver checkpoint budget."""
+    from devito import Function, TimeFunction
+    from devito.checkpointing import CheckpointOperator, DevitoCheckpoint
+    from pyrevolve import Revolver
+
+    solver, model = ctx.solver, ctx.model
+    grad = Function(name='grad', grid=model.grid)
+    v = TimeFunction(name='v', grid=model.grid, time_order=2,
+                     space_order=solver.space_order)
+    u = TimeFunction(name='u', grid=model.grid, time_order=2,
+                     space_order=solver.space_order)
+    kwargs = {'vp': model.vp}
+    kwargs.update(model.physical_params(**kwargs))
+    dt = getattr(ctx, 'dt', None) or getattr(solver, 'dt', None) or model.critical_dt
+    checkpoint = DevitoCheckpoint([u])
+    wrap_fw = CheckpointOperator(solver.op_fwd(save=False), src=ctx.src,
+                                 u=u, dt=dt, **kwargs)
+    wrap_rev = CheckpointOperator(solver.op_grad(save=False), u=u, v=v,
+                                  rec=rec, dt=dt, grad=grad, **kwargs)
+    nsteps = int(rec.data.shape[0] - 2)
+    revolver = Revolver(checkpoint, wrap_fw, wrap_rev,
+                        int(ctx.num_checkpoints), nsteps)
+    revolver.apply_forward()
+    revolver.apply_reverse()
+    return grad.data
 
 import torch.nn.functional as F
 
@@ -188,28 +234,26 @@ class ForwardModelingConvencional(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input: torch.Tensor, src: WaveletSource, model: Model,
                 geometry: AcquisitionGeometry, solver: AcousticWaveSolver,
-                device: torch.device) -> torch.Tensor:
+                device: torch.device, dt: float = None) -> torch.Tensor:
 
         ctx.model = model
         ctx.geometry = geometry
         ctx.solver = solver
         ctx.device = device
         ctx.src = src
+        ctx.dt = float(dt) if dt is not None else float(solver.dt)
 
 
-        vp = Function(name='vp', grid=ctx.model.grid,
-                    space_order=ctx.model.space_order)
         vp_tensor = input.pow(-0.5)
-        vp_numpy = gaussian_filter(vp_tensor[0, 0, ...].cpu().numpy(), sigma=0.5)
-        # vp_numpy = vp_tensor[0, 0, ...].cpu().numpy()
+        # vp_numpy = gaussian_filter(vp_tensor[0, 0, ...].cpu().numpy(), sigma=0.5)
+        vp_numpy = vp_tensor[0, 0, ...].cpu().numpy()
 
-        initialize_function(vp, vp_numpy, ctx.model.nbl)
-        ctx.model.vp = vp
+        initialize_function(ctx.model.vp, vp_numpy, ctx.model.nbl)
 
         # ctx.solver = AcousticWaveSolver(ctx.model, ctx.geometry, space_order=ctx.model.space_order)
 
         # Nonlinear forward modeling
-        d_nonlin, ctx.u0 = ctx.solver.forward(src=src, vp=ctx.model.vp, model=ctx.model, save=True)[:2]
+        d_nonlin, ctx.u0 = ctx.solver.forward(src=src, vp=ctx.model.vp, model=ctx.model, dt=ctx.dt, save=True)[:2]
 
         # d_nonlin = np.array(d_nonlin.data)
         d_nonlin = torch.from_numpy(np.array(d_nonlin.data)).to(ctx.device)
@@ -223,7 +267,7 @@ class ForwardModelingConvencional(torch.autograd.Function):
         rec = ctx.geometry.rec
         rec.data[:] = grad_output[:]
 
-        g = ctx.solver.jacobian_adjoint(rec, model=ctx.model, vp=ctx.model.vp, u=ctx.u0)[0].data
+        g = ctx.solver.jacobian_adjoint(rec, model=ctx.model, vp=ctx.model.vp, u=ctx.u0, dt=ctx.dt)[0].data
 
         # Remove padding
         nb = ctx.model.nbl
@@ -244,4 +288,4 @@ class ForwardModelingConvencional(torch.autograd.Function):
         # print(f'min_grad: {g.min()} max_grad: {g.max()}')
 
 
-        return g.view(1, 1, g.shape[0], g.shape[1]), None, None, None, None, None
+        return g.view(1, 1, g.shape[0], g.shape[1]), None, None, None, None, None, None

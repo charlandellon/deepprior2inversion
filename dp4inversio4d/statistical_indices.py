@@ -165,7 +165,7 @@ def _plot_profiles(directory, profiles, masks, grid, titles):
             axis.set_ylim(max(item['z_km']), min(item['z_km']))
             axis.set_box_aspect(2.6)
             axis.set_title(
-                f'{region} — {SURVEY_LABELS.get(survey, survey)}',
+                f'{region}: {SURVEY_LABELS.get(survey, survey)}',
                 fontsize=11, pad=4,
             )
             axis.set_xlabel('Vp (km/s)', fontsize=10)
@@ -363,7 +363,7 @@ def compute_indices(truth_dir, checkpoints, tag, surveys, burn_in, stride,
             field[mask] = values
             axis = axes[row, column_index]
             _image(axis, field[crop], extent, 'viridis',
-                   (0, vi_limit), 'IV (%)', f'{region} — {SURVEY_LABELS[survey]}',
+                   (0, vi_limit), 'IV (%)', f'{region}: {SURVEY_LABELS[survey]}',
                    label_size=16, tick_size=14, nbins=4, aspect='auto',
                    colorbar_size='5%')
             axis.tick_params(axis='both', labelsize=14)

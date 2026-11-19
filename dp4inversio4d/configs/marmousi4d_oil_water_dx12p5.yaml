@@ -1,0 +1,104 @@
+experiment:
+  id: marmousi4d_expanded_oil_water_dx12p5
+  scenario: E2
+  seed: 20261114
+  times_years: [0.0, 2.0, 5.0]
+
+# Generated with:
+#   python scripts/velocity_models/gerando_marmousi.py --f0 12.533333333333333
+# f0 = 4700 / (30 * 12.5) = 12.533333... Hz, shared by grid and Ricker.
+model:
+  marmousi_path: data/velocity_model/marmousi2-model-true-large_freq_12.533333333333333.pth
+  original_vp_path: data/velocity_model/vp_marmousi-ii.segy.gz
+  input_units: km/s
+  input_axes: xz
+  origin_xz_m: [0.0, 0.0]
+  original_to_local_x_offset_m: -2000.0
+  reservoir_selection: native_low_velocity_components
+  baseline_mode: replace_reservoirs_oil_water
+  background_transform: smooth_modified_baseline
+  # 470 m and 1566.7 m expressed in 12.5 m cells.
+  background_smoothing_sigma_cells: [37.6, 37.6]
+  background_vertical_smoothing_sigma_cells: 125.33333333333333
+  water_layer_depth_m: 500.0
+
+# ROIs locate the two bodies marked by the user; masks are native-data connected
+# components, NOT these rectangular search windows or the hand-drawn circles.
+# Preview only: thicken those selected bodies by 65 m above/below each native
+# column. Keep lateral support, original wells, front parameters and petrophysics.
+reservoirs:
+  R1:
+    search_roi_xz_m: [-1900, 2000, 750, 1350]
+    low_velocity_threshold_m_s: 1400.0
+    body_seed_xz_m: [1100, 1060]
+    enlargement:
+      method: native_vertical_dilation
+      padding_z_m: 65.0
+    well_placement: body_x_quantiles_20_80
+    Sw_initial: 0.20
+    So_residual: 0.20
+    front_speed_m_per_year: 80.0
+    front_width_m: 35.0
+    distance_scale_xz: [1.0, 0.5]
+    active: true
+  R2:
+    search_roi_xz_m: [7400, 9200, 800, 1550]
+    low_velocity_threshold_m_s: 1630.0
+    body_seed_xz_m: [8300, 1150]
+    enlargement:
+      method: native_vertical_dilation
+      padding_z_m: 65.0
+    well_placement: body_x_quantiles_20_80
+    Sw_initial: 0.20
+    So_residual: 0.20
+    front_speed_m_per_year: 40.0
+    front_width_m: 35.0
+    distance_scale_xz: [1.0, 0.7]
+    active: true
+
+# Synthetic oil-water sandstone properties. No calibration to original low Vp:
+# the user authorized synthetic baseline replacement and now larger reservoir areas.
+rock_physics:
+  R1:
+    K_o: 1.0e+9
+    K_w: 2.2e+9
+    rho_o: 800.0
+    rho_w: 1030.0
+    K_s: 3.7e+10
+    rho_s: 2650.0
+    G_dry: 1.0e+9
+    phi: 0.30
+  R2:
+    K_o: 1.0e+9
+    K_w: 2.2e+9
+    rho_o: 800.0
+    rho_w: 1030.0
+    K_s: 3.7e+10
+    rho_s: 2650.0
+    G_dry: 2.0e+9
+    phi: 0.25
+dry_bulk_modulus_Pa:
+  R1: 3.0e+9
+  R2: 5.0e+9
+
+acquisition:
+  # Same physical geometry as the approved expanded truth, now on 12.5 m cells.
+  nsrc: 100
+  nrec: 400
+  dominant_frequency_hz: 12.533333333333333
+  space_order: 8
+  # Boundary QC on this grid: 150 cells stays near 1% of the nbl=300
+  # reference at the extreme shots and fits the container memory budget.
+  nbl: 150
+  duration_policy: diagonal_over_mean_vp_times_1.75
+  geometry:
+    edge_margin_m: 62.5
+    src_rcv_depth_m: 62.666666666666664
+  noise:
+    type: wavelet_correlated
+    snr_db: 6.0
+    snr_reference: pooled_survey_expected_noise_variance
+    normalization: unit_rms_realization
+
+output:
+  directory: outputs/4d

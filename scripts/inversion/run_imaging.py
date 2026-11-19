@@ -64,6 +64,72 @@ parser.add_argument('--seed',
                     default=42,
                     help='set seed for aleatory sample latent space')
 
+parser.add_argument('--noise_seed',
+                    dest='noise_seed',
+                    type=int,
+                    default=None,
+                    help='optional seed for the colored-noise realization')
+
+parser.add_argument('--nbl',
+                    dest='nbl',
+                    type=int,
+                    default=50,
+                    help='absorbing boundary thickness in cells')
+
+parser.add_argument('--checkpointing',
+                    dest='checkpointing',
+                    type=int,
+                    default=0,
+                    help='1 uses Devito checkpointing instead of storing the full wavefield')
+
+parser.add_argument('--num_checkpoints',
+                    dest='num_checkpoints',
+                    type=int,
+                    default=0,
+                    help='explicit Revolver checkpoint budget; 0 uses the Devito default')
+
+parser.add_argument('--tmax_ms',
+                    dest='tmax_ms',
+                    type=float,
+                    default=None,
+                    help='acquisition duration in milliseconds; default uses the setup estimate')
+
+parser.add_argument('--deth_rec',
+                    dest='deth_rec',
+                    type=int,
+                    default=2,
+                    help='receiver depth in cells')
+
+parser.add_argument('--deth_src',
+                    dest='deth_src',
+                    type=int,
+                    default=2,
+                    help='source depth in cells')
+
+parser.add_argument('--edge_margin_m',
+                    dest='edge_margin_m',
+                    type=float,
+                    default=0.0,
+                    help='lateral acquisition margin in metres')
+
+parser.add_argument('--np_kernel',
+                    dest='np_kernel',
+                    type=int,
+                    default=120,
+                    help='colored-noise wavelet kernel length in samples')
+
+parser.add_argument('--water_depth_m',
+                    dest='water_depth_m',
+                    type=float,
+                    default=500.0,
+                    help='water-layer depth in metres')
+
+parser.add_argument('--bg_sigma',
+                    dest='bg_sigma',
+                    type=float,
+                    default=50.0,
+                    help='vertical background smoothing sigma in cells for bg_linear=2')
+
 parser.add_argument('--z_path',
                     dest='z_path',
                     default=None,

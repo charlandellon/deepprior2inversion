@@ -180,7 +180,7 @@ def plot_rmse(error, file_name, extents=None, y_label='RMSE'):
 
     ax.legend(fontsize='x-small', loc='upper right')
 
-    ax.set_xlabel('Iteration')
+    ax.set_xlabel('Steps')
     ax.set_ylabel(y_label)
     #ax.set_yscale('log')
     # plt.xscale('log')

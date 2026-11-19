@@ -29,6 +29,19 @@ def main():
     calibrate.add_argument('--freq', type=float, default=5.0)
     calibrate.add_argument('--nsimsrc', type=int, default=None)
     calibrate.add_argument('--target-snr-db', type=float, default=6.0)
+    calibrate.add_argument('--noise-type', default='white_gaussian')
+    calibrate.add_argument('--nbl', type=int, default=50)
+    calibrate.add_argument('--tmax-ms', type=float, default=None)
+    calibrate.add_argument('--deth-rec', type=int, default=2)
+    calibrate.add_argument('--deth-src', type=int, default=2)
+    calibrate.add_argument('--edge-margin-m', type=float, default=0.0)
+    calibrate.add_argument('--water-depth-m', type=float, default=500.0)
+    calibrate.add_argument('--checkpointing', type=int, default=0)
+    calibrate.add_argument('--num-checkpoints', type=int, default=0)
+    calibrate.add_argument('--sigma-name', default='',
+                           help='optional prefix: writes sigma_<name>_<survey>.json')
+    calibrate.add_argument('--sigma-value', type=float, default=None,
+                           help='override the computed sigma (e.g. target in-band SNR)')
 
     stats = commands.add_parser('stats', help='quantify 4D posterior statistics after inversion')
     stats.add_argument('--truth', required=True)
@@ -52,6 +65,14 @@ def main():
     gathers.add_argument('--nrec', type=int, default=400)
     gathers.add_argument('--nsimsrc', type=int, default=100)
     gathers.add_argument('--freq', type=float, default=5.0)
+    gathers.add_argument('--nbl', type=int, default=50)
+    gathers.add_argument('--tmax-ms', type=float, default=None)
+    gathers.add_argument('--deth-rec', type=int, default=2)
+    gathers.add_argument('--deth-src', type=int, default=2)
+    gathers.add_argument('--edge-margin-m', type=float, default=0.0)
+    gathers.add_argument('--water-depth-m', type=float, default=500.0)
+    gathers.add_argument('--checkpointing', type=int, default=0)
+    gathers.add_argument('--num-checkpoints', type=int, default=0)
 
     args = parser.parse_args()
     if args.command == 'build':
@@ -60,9 +81,13 @@ def main():
     elif args.command == 'calibrate':
         surveys = SURVEYS if args.survey == 'all' else (args.survey,)
         for survey in surveys:
-            report = calibrate_survey(args.truth, survey, args.source_mode,
-                                      args.nsrc, args.nrec, args.freq,
-                                      args.target_snr_db, args.nsimsrc)
+            report = calibrate_survey(
+                args.truth, survey, args.source_mode, args.nsrc, args.nrec,
+                args.freq, args.target_snr_db, args.nsimsrc,
+                args.noise_type, args.nbl, args.tmax_ms, args.deth_rec,
+                args.deth_src, args.edge_margin_m, args.water_depth_m,
+                args.checkpointing, args.num_checkpoints, args.sigma_name,
+                args.sigma_value)
             print(json.dumps(report, indent=2))
     elif args.command == 'gathers':
         overrides = dict(item.split('=', 1) for item in args.data)
@@ -81,7 +106,12 @@ def main():
                 data_path = matches[0]
             print(json.dumps(plot_central_gather(
                 args.truth, survey, data_path, args.source_mode, args.nsrc,
-                args.nrec, args.nsimsrc, args.freq), indent=2))
+                args.nrec, args.nsimsrc, args.freq,
+                nbl=args.nbl, tmax_ms=args.tmax_ms, deth_rec=args.deth_rec,
+                deth_src=args.deth_src, edge_margin_m=args.edge_margin_m,
+                water_depth_m=args.water_depth_m,
+                checkpointing=args.checkpointing,
+                num_checkpoints=args.num_checkpoints), indent=2))
     else:
         report = compute_statistics(args.truth, args.checkpoints, args.tag,
                                     args.output, args.burn_in, args.stride,

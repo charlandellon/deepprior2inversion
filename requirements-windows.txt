@@ -1,5 +1,6 @@
 # Install PyTorch separately from its CUDA wheel index (see README).
 devito
+pyrevolve
 h5py
 matplotlib
 numpy

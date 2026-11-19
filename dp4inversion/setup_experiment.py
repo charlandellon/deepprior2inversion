@@ -38,20 +38,26 @@ class ForwardBornLayer(torch.nn.Module):
 
 class ForwardModelingLayer(torch.nn.Module):
 
-    def __init__(self, model, src, geometry, device):
+    def __init__(self, model, src, geometry, device, checkpointing=False,
+                 num_checkpoints=0, dt=None):
         super(ForwardModelingLayer, self).__init__()
         self.forward_born = ForwardModeling()
         self.model = model
         self.src = src
         self.geometry = geometry
         self.device = device
+        self.checkpointing = bool(checkpointing)
+        self.num_checkpoints = int(num_checkpoints)
         self.solver = AcousticWaveSolver(self.model,
                                          self.geometry, kernel= 'OT2',
                                          space_order=self.model.space_order)
+        self.dt = float(dt) if dt is not None else float(self.solver.dt)
 
     def forward(self, x):
         return self.forward_born.apply(x, self.src, self.model, self.geometry,
-                                       self.solver, self.device)
+                                       self.solver, self.device,
+                                       self.checkpointing, self.num_checkpoints,
+                                       self.dt)
 
 
 class SeismicSetup(object):
@@ -276,7 +282,7 @@ class SeismicSetup(object):
         """
         Load velocity and setup Marmousi model
         """
-        f0 = 5
+        f0 = float(getattr(self.args, 'freq', 5.0))
         vel_path = datadir("velocity_model")
         path = getattr(self.args, 'model_path', None) or os.path.join(vel_path, f'marmousi2-model-true-large_freq_{f0}.pth')
         model_vp = load_torch_file(path)
@@ -285,8 +291,9 @@ class SeismicSetup(object):
         shape = (model_vp['nx'], model_vp['ny'])
         origin = (0, 0)
 
+        water_depth_m = float(getattr(self.args, 'water_depth_m', 500.0))
         vp_mask = np.ones_like(vp)
-        vp_mask[:, :int(500 / model_vp['dx']) + 1] = 0
+        vp_mask[:, :int(water_depth_m / model_vp['dx']) + 1] = 0
 
         vp = vp_mask * model_vp['vp'] + (1.0 - vp_mask) * model_vp['vp']
 
@@ -301,7 +308,8 @@ class SeismicSetup(object):
         elif self.args.bg_linear == 2:
             from scipy.ndimage import gaussian_filter1d
 
-            vp_smooth = gaussian_filter1d(np.mean(vp_smooth, axis=0, keepdims=True), sigma=50).repeat(vp.shape[0], axis=0)
+            bg_sigma = float(getattr(self.args, 'bg_sigma', 50.0))
+            vp_smooth = gaussian_filter1d(np.mean(vp_smooth, axis=0, keepdims=True), sigma=bg_sigma).repeat(vp.shape[0], axis=0)
 
 
 
@@ -310,18 +318,19 @@ class SeismicSetup(object):
         t_range = np.sqrt((shape[0]*self.spacing[0])**2 + (shape[1]*self.spacing[1])**2)/np.mean(vp)
 
         # f0 = 2.5
-        self.tn = t_range + 1.0
+        self.tn = (float(self.args.tmax_ms) if getattr(self.args, 'tmax_ms', None)
+                   else t_range + 1.0)
         self.f0 = f0 * 1e-3 #model_vp_smooth['f0'] * 1e-3
         self.nsrc = self.args.nsrc #int(shape[0] // 32) #200#300
         self.nrec = self.args.nrec #model_vp_smooth['nrcv'] #int(shape[0] // 2) #400#600
-        self.deth_rec = 2
-        self.deth_src = 2
-        self.np_kernel = 120
+        self.deth_rec = int(getattr(self.args, 'deth_rec', 2))
+        self.deth_src = int(getattr(self.args, 'deth_src', 2))
+        self.np_kernel = int(getattr(self.args, 'np_kernel', 120))
 
         self.dm = torch.from_numpy(1. / vp**2).unsqueeze(0).unsqueeze(0)
         self.dm_min = torch.from_numpy(1. / (vp + self.args.dv)**2).min().item()
         self.dm_max = self.dm.max().item()
-        nbl = 50
+        nbl = int(getattr(self.args, 'nbl', None) or 50)
         space_order = 8
         self.model = Model(space_order=space_order,
                            vp=vp,
@@ -344,7 +353,9 @@ class SeismicSetup(object):
                            bcs='damp')
 
         self.dt = self.model.critical_dt
-        self.coord_src = np.linspace(0, self.model.domain_size[0],
+        self.edge_margin = float(getattr(self.args, 'edge_margin_m', 0.0))
+        self.coord_src = np.linspace(self.edge_margin,
+                                     self.model.domain_size[0] - self.edge_margin,
                                      num=self.nsrc)
 
         del model_vp_smooth
@@ -502,10 +513,11 @@ class SeismicSetup(object):
         time_range = TimeAxis(start=0.0, stop=self.tn, step=self.dt)
         self.nt = time_range.num
 
+        edge_margin = float(getattr(self, 'edge_margin', 0.0))
         rec_coordinates = np.empty((self.nrec, len(self.model.spacing)),
                                    dtype=np.float32)
-        rec_coordinates[:, 0] = np.linspace(0,
-                                            self.model.domain_size[0],
+        rec_coordinates[:, 0] = np.linspace(edge_margin,
+                                            self.model.domain_size[0] - edge_margin,
                                             num=self.nrec)
         rec_coordinates[:, 1] = self.deth_rec * self.model.spacing[1]
 
@@ -520,8 +532,8 @@ class SeismicSetup(object):
 
         self.wavelet = np.array(src.data[:, 0:1])
         # print(f'fonnte min: {self.wavelet.min()} max: {self.wavelet.max()}')
-        src.coordinates.data[:, 0] = np.linspace(0,
-                                                 self.model.domain_size[0],
+        src.coordinates.data[:, 0] = np.linspace(edge_margin,
+                                                 self.model.domain_size[0] - edge_margin,
                                                  num=self.nsimsrc)
         src.coordinates.data[:, -1] = self.deth_src * self.model.spacing[1]
 
@@ -533,7 +545,11 @@ class SeismicSetup(object):
                                        tn=self.tn,
                                        src_type='Ricker',
                                        f0=self.f0)
-        return ForwardModelingLayer(self.model, src, geometry, self.device)
+        return ForwardModelingLayer(
+            self.model, src, geometry, self.device,
+            checkpointing=bool(getattr(self.args, 'checkpointing', 0)),
+            num_checkpoints=int(getattr(self.args, 'num_checkpoints', 0)),
+            dt=self.dt)
 
     def create_op(self, src_idx=0):
         """
@@ -580,7 +596,9 @@ def simulate_sequential_data(args: argparse.Namespace):
     data_path = os.path.join(datadir("observed_data"), args.file_seq_data)
 
     if (not os.path.exists(data_path)) or (args.run_all == 1):
-        imaging_setup = SeismicSetup(args, device=False, sim_source=False)
+        data_args = argparse.Namespace(**vars(args))
+        data_args.checkpointing = 1
+        imaging_setup = SeismicSetup(data_args, device=False, sim_source=False)
         dm = imaging_setup.dm
 
         data_file = h5py.File(data_path, 'w')
@@ -589,15 +607,16 @@ def simulate_sequential_data(args: argparse.Namespace):
             dtype=np.float32)
 
         logging.info('Simulating observed data')
-        for idx in tqdm(range(imaging_setup.nsrc)):
-            forward_op = imaging_setup.create_op(src_idx=idx)
-            d = forward_op(dm)
-            # mask = mute(d, imaging_setup.coord_src[idx],
-            #                 np.linspace(0, imaging_setup.model.domain_size[0], num=imaging_setup.nrec),
-            #                 imaging_setup.dt, imaging_setup.nt, 1.5, flat_len = imaging_setup.flat_len,
-            #                 taper_len = imaging_setup.taper_len, device='cpu')
-            # d *= mask
-            d_lin[idx, :, :] = d.detach().numpy().astype(np.float32)
+        with torch.no_grad():
+            for idx in tqdm(range(imaging_setup.nsrc)):
+                forward_op = imaging_setup.create_op(src_idx=idx)
+                d = forward_op(dm)
+                # mask = mute(d, imaging_setup.coord_src[idx],
+                #                 np.linspace(0, imaging_setup.model.domain_size[0], num=imaging_setup.nrec),
+                #                 imaging_setup.dt, imaging_setup.nt, 1.5, flat_len = imaging_setup.flat_len,
+                #                 taper_len = imaging_setup.taper_len, device='cpu')
+                # d *= mask
+                d_lin[idx, :, :] = d.detach().numpy().astype(np.float32)
 
         # Add noise to get observed data (-8.7466 dB)
         if getattr(args, 'noise_type', 'wavelet_correlated') == 'white_gaussian':
@@ -607,10 +626,16 @@ def simulate_sequential_data(args: argparse.Namespace):
             d_lin[...] += args.sigma*rng.standard_normal(
                 d_lin.shape).astype(np.float32)
         else:
+            noise_seed = getattr(args, 'noise_seed', None)
+            rng = (np.random.default_rng(noise_seed)
+                   if noise_seed is not None else None)
             kernel = np.outer(imaging_setup.wavelet[:imaging_setup.np_kernel],
                                 imaging_setup.wavelet[:imaging_setup.np_kernel])
             for j in range(d_lin.shape[0]):
-                e = args.sigma * np.random.randn(*d_lin.shape[1:])
+                if rng is None:
+                    e = args.sigma * np.random.randn(*d_lin.shape[1:])
+                else:
+                    e = args.sigma * rng.standard_normal(d_lin.shape[1:])
                 e = signal.fftconvolve(e, kernel, mode='same')
                 e *= 1 / np.linalg.norm(e)
                 e *= np.sqrt(np.prod(e.shape)) * args.sigma
